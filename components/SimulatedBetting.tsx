@@ -162,6 +162,8 @@ interface AutoTask {
   // v5.1: 胜率触发任务的运行时状态
   aiWinRateActive?: boolean; // 胜率达到触发阈值后变为true, 达到停止阈值后变为false
   recentPredictions?: { correct: boolean; timestamp: number }[]; // 近期预测结果
+  // v5.1-fix: 影子预测 - 持续追踪模型预测准确率（无论是否投注）
+  shadowPrediction?: { targetHeight: number; prediction: BetTarget; betType: BetType };
   stats: {
     wins: number;
     losses: number;
@@ -1339,12 +1341,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               task.stats.maxLoss = Math.min(task.stats.maxLoss, newTotalProfit);
               task.stats.totalBetAmount = (task.stats.totalBetAmount || 0) + bet.amount;
 
-              // v5.1: 跟踪胜率触发任务的预测准确率
-              if (task.config.autoTarget === 'AI_WINRATE_TRIGGER') {
-                const preds = task.recentPredictions || [];
-                preds.unshift({ correct: isWin, timestamp: Date.now() });
-                task.recentPredictions = preds.slice(0, 100); // 保留最近100条
-              }
+              // v5.1-fix: 胜率触发的预测准确率现在通过影子预测(shadowPrediction)持续追踪
+              // 不再在此处追踪，避免与影子预测重复计数
 
               // Task Drawdown Calculation
               task.stats.peakProfit = Math.max(task.stats.peakProfit, newTotalProfit);
@@ -2047,38 +2045,68 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
              }
            }
         } else if (task.config.autoTarget === 'AI_WINRATE_TRIGGER') {
-           // v5.1: 胜率触发投注
+           // v5.1-fix: 胜率触发投注 - 修复: 持续追踪模型预测+正确触发条件
            const selectedIds = task.config.selectedModels || ['ensemble'];
            const winWindow = task.config.winRateWindow || 30;
            const triggerPct = task.config.winRateTrigger || 30;
            const stopPct = task.config.winRateStop || 60;
 
-           // 计算模型近期胜率
+           // 1. 解析上一轮影子预测（无论是否在投注，持续追踪模型准确率）
+           if (task.shadowPrediction) {
+             const shadowBlock = allBlocks.find(b => b.height === task.shadowPrediction!.targetHeight);
+             if (shadowBlock) {
+               let isCorrect = false;
+               if (task.shadowPrediction.betType === 'PARITY') {
+                 isCorrect = shadowBlock.type === task.shadowPrediction.prediction;
+               } else {
+                 isCorrect = shadowBlock.sizeType === task.shadowPrediction.prediction;
+               }
+               const preds = task.recentPredictions || [];
+               preds.unshift({ correct: isCorrect, timestamp: Date.now() });
+               task.recentPredictions = preds.slice(0, 100);
+               task.shadowPrediction = undefined;
+               tasksChanged = true;
+             }
+           }
+
+           // 2. 计算模型近期胜率
            const recent = (task.recentPredictions || []).slice(0, winWindow);
            const recentTotal = recent.length;
            const recentCorrect = recent.filter(p => p.correct).length;
            const winRate = recentTotal > 0 ? (recentCorrect / recentTotal) * 100 : 0;
 
-           // 状态机: 胜率达到trigger开始, 达到stop停止
+           // 3. 状态机: 胜率低于trigger%开始投注, 达到stop%停止投注
            const isActive = task.aiWinRateActive || false;
 
-           if (!isActive && winRate >= triggerPct && recentTotal >= 5) {
-             // 触发开始
+           if (!isActive && winRate <= triggerPct && recentTotal >= Math.min(5, winWindow)) {
+             // 模型胜率低于触发阈值 → 开始投注
              task.aiWinRateActive = true;
              tasksChanged = true;
            } else if (isActive && winRate >= stopPct) {
-             // 达到停止阈值
+             // 投注胜率达到停止阈值 → 停止投注
              task.aiWinRateActive = false;
              tasksChanged = true;
            }
 
-           if (task.aiWinRateActive) {
-             const analysis = runSelectedModelsAnalysis(allBlocks, rule, selectedIds);
-             if (analysis.shouldPredict) {
-               if (analysis.confP >= analysis.confS && analysis.confP >= 90 && analysis.nextP) {
-                 if (ts.includes(analysis.nextP)) { type = 'PARITY'; target = analysis.nextP; shouldBet = true; currentConfidence = analysis.confP; }
-               } else if (analysis.confS > analysis.confP && analysis.confS >= 90 && analysis.nextS) {
-                 if (ts.includes(analysis.nextS)) { type = 'SIZE'; target = analysis.nextS; shouldBet = true; currentConfidence = analysis.confS; }
+           // 4. 始终运行模型预测并存储影子预测（持续追踪准确率）
+           const analysis = runSelectedModelsAnalysis(allBlocks, rule, selectedIds);
+           if (analysis.shouldPredict) {
+             if (analysis.confP >= analysis.confS && analysis.confP >= 90 && analysis.nextP) {
+               if (ts.includes(analysis.nextP)) {
+                 task.shadowPrediction = { targetHeight: nextHeight, prediction: analysis.nextP, betType: 'PARITY' };
+                 tasksChanged = true;
+                 // 仅在激活状态下实际下注
+                 if (task.aiWinRateActive) {
+                   type = 'PARITY'; target = analysis.nextP; shouldBet = true; currentConfidence = analysis.confP;
+                 }
+               }
+             } else if (analysis.confS > analysis.confP && analysis.confS >= 90 && analysis.nextS) {
+               if (ts.includes(analysis.nextS)) {
+                 task.shadowPrediction = { targetHeight: nextHeight, prediction: analysis.nextS, betType: 'SIZE' };
+                 tasksChanged = true;
+                 if (task.aiWinRateActive) {
+                   type = 'SIZE'; target = analysis.nextS; shouldBet = true; currentConfidence = analysis.confS;
+                 }
                }
              }
            }
@@ -2748,7 +2776,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            </div>
                          </div>
                          <p className="text-[9px] text-cyan-600 font-semibold">
-                           近{draftConfig.winRateWindow || 30}期胜率≥{draftConfig.winRateTrigger || 30}%时开始投注，达到{draftConfig.winRateStop || 60}%时停止
+                           近{draftConfig.winRateWindow || 30}期模型胜率≤{draftConfig.winRateTrigger || 30}%时开始投注，胜率≥{draftConfig.winRateStop || 60}%时停止
                          </p>
                       </div>
                    )}
