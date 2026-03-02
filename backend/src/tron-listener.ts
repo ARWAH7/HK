@@ -95,12 +95,15 @@ export class TronBlockListener {
               );
             }
 
-            // 缺失区块检测 - 不阻塞实时区块处理，异步执行
-            this.checkAndFillMissingBlocks(block.height).catch(err =>
-              console.error('[缺失检测] 异步补全失败:', err)
-            );
-
             console.log(`[TRON Listener] 📦 新区块: ${block.height} (${block.type}, ${block.sizeType})`);
+
+            // 先捕获缺失区块范围（在更新 lastProcessedHeight 之前），避免竞态
+            const prevHeight = this.lastProcessedHeight;
+
+            // 立即更新最后处理的区块高度（防止异步补全回退该值）
+            if (block.height > this.lastProcessedHeight) {
+              this.lastProcessedHeight = block.height;
+            }
 
             // 优先保存和发布当前实时区块（不被缺失补全阻塞）
             const startTime = Date.now();
@@ -113,8 +116,15 @@ export class TronBlockListener {
             await publishBlock(block);
             const publishTime = Date.now() - startTime - saveTime;
 
-            // 更新最后处理的区块高度
-            this.lastProcessedHeight = block.height;
+            // 缺失区块检测 - 使用之前捕获的高度，异步执行
+            if (prevHeight > 0 && block.height > prevHeight + 1) {
+              const missingStart = prevHeight + 1;
+              const missingEnd = block.height - 1;
+              console.warn(`[缺失检测] ⚠️ 检测到 ${missingEnd - missingStart + 1} 个缺失区块: ${missingStart} - ${missingEnd}`);
+              this.fillMissingBlocks(missingStart, missingEnd).catch(err =>
+                console.error('[缺失检测] 异步补全失败:', err)
+              );
+            }
 
             console.log(`[性能] 保存: ${saveTime}ms, 发布: ${publishTime}ms, 总计: ${Date.now() - startTime}ms`);
           }
@@ -304,8 +314,10 @@ export class TronBlockListener {
         }
       }
 
-      // 更新最后处理的区块高度
-      this.lastProcessedHeight = endHeight;
+      // 仅在 endHeight 更大时更新，避免回退实时区块已推进的高度
+      if (endHeight > this.lastProcessedHeight) {
+        this.lastProcessedHeight = endHeight;
+      }
 
       console.log(`[区块补全] ✅ 补全完成: ${actualStart} - ${endHeight}`);
       console.log(`[区块补全] 📊 成功: ${successCount}, 失败: ${failCount}, 总计: ${heights.length}`);

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, memo, useMemo, useCallback, useRef } from 'react';
 import { BlockData, AIPredictionResult, PredictionHistoryItem, IntervalRule } from '../types';
-import { BrainCircuit, Sparkles, Target, RefreshCw, CheckCircle2, XCircle, Clock, ShieldCheck, Activity, Filter, Trophy, Loader2, ChevronRight, BookOpen, HelpCircle, X, Microscope, Network, Download, Trash2, Layers, GitBranch, TrendingUp, BarChart4 } from 'lucide-react';
+import { BrainCircuit, Sparkles, Target, RefreshCw, CheckCircle2, XCircle, Clock, ShieldCheck, Activity, Filter, Trophy, Loader2, ChevronRight, BookOpen, HelpCircle, X, Microscope, Network, Download, Trash2, Layers, GitBranch, TrendingUp, BarChart4, Brain, Timer, LineChart, Zap, Dice5, Waves } from 'lucide-react';
 import { runDeepAnalysisV5, getNextAlignedHeight } from '../utils/aiAnalysis';
 import { InteractiveChart } from './InteractiveChart';
 import { ModelTrendAnalysisModal } from './ModelTrendAnalysisModal';
@@ -27,6 +27,60 @@ type PredictionFilter = 'ALL' | 'ODD' | 'EVEN' | 'BIG' | 'SMALL';
  */
 const AI_MODELS_DOCS = [
   {
+    id: "hmm",
+    name: "隐马尔可夫模型 (Hidden Markov Model)",
+    short: "隐藏状态推断",
+    desc: "基于隐马尔可夫模型（HMM），通过分析可观测序列推断隐藏状态的转移规律。模型维护一个状态转移矩阵和发射概率矩阵，利用 Viterbi 算法找到最可能的隐藏状态序列，从而预测下一个输出值。",
+    icon: <Brain className="w-5 h-5 text-sky-500" />,
+    color: "text-sky-500",
+    bg: "bg-sky-50"
+  },
+  {
+    id: "lstm",
+    name: "LSTM 时间序列 (Long Short-Term Memory)",
+    short: "长期记忆预测",
+    desc: "模拟长短期记忆网络的核心思想，通过滑动窗口捕捉序列中的长期依赖关系。分析不同时间尺度（5期、10期、20期）的模式变化趋势，当多个时间尺度呈现一致信号时触发高置信度预测。",
+    icon: <Timer className="w-5 h-5 text-teal-500" />,
+    color: "text-teal-500",
+    bg: "bg-teal-50"
+  },
+  {
+    id: "arima",
+    name: "ARIMA 模型 (AutoRegressive Integrated Moving Average)",
+    short: "自回归预测",
+    desc: "基于自回归积分滑动平均模型，分析序列的自相关性和偏自相关性。通过差分运算消除非平稳性，利用历史值的线性组合预测未来趋势，擅长捕捉序列中的周期性波动。",
+    icon: <LineChart className="w-5 h-5 text-blue-600" />,
+    color: "text-blue-600",
+    bg: "bg-blue-50"
+  },
+  {
+    id: "entropy",
+    name: "熵值突变检测 (Entropy Anomaly Detection)",
+    short: "信息混乱度监控",
+    desc: "基于 Shannon 信息熵理论，实时监控序列的信息混乱程度。当熵值突然下降时，说明序列规律性增强，趋势可能延续；当熵值突然上升时，说明随机性增加，趋势可能反转。",
+    icon: <Zap className="w-5 h-5 text-yellow-500" />,
+    color: "text-yellow-500",
+    bg: "bg-yellow-50"
+  },
+  {
+    id: "montecarlo",
+    name: "蒙特卡洛模拟 (Monte Carlo Simulation)",
+    short: "概率模拟验证",
+    desc: "通过大量随机模拟生成可能的未来序列，统计各结果出现的概率分布。当模拟结果显示某一方向的概率显著偏离50%时，结合当前序列的实际偏差，输出具有统计学支撑的预测信号。",
+    icon: <Dice5 className="w-5 h-5 text-green-500" />,
+    color: "text-green-500",
+    bg: "bg-green-50"
+  },
+  {
+    id: "wavelet",
+    name: "小波变换分析 (Wavelet Transform)",
+    short: "多尺度频率分析",
+    desc: "将序列分解为不同频率的分量，分析各频率层的能量分布。当低频分量（长期趋势）和高频分量（短期波动）同时指向同一方向时，模型认为趋势具有多尺度一致性，触发预测信号。",
+    icon: <Waves className="w-5 h-5 text-slate-500" />,
+    color: "text-slate-500",
+    bg: "bg-slate-50"
+  },
+  {
     id: "markov",
     name: "马尔可夫状态迁移 (Markov Chain)",
     short: "捕捉震荡与规律",
@@ -39,11 +93,12 @@ const AI_MODELS_DOCS = [
     id: "bayesian",
     name: "贝叶斯后验推理 (Bayesian Inference)",
     short: "极值风险评估",
-    desc: "基于大数定律与贝叶斯定理。模型实时计算当前序列分布相对于理论哈希期望值的后验偏差。当某一属性（如双）在统计学上呈现出 3 倍标准差以上的偏离时，模型会介入，寻找概率回归的‘转折点’。",
+    desc: "基于大数定律与贝叶斯定理。模型实时计算当前序列分布相对于理论哈希期望值的后验偏差。当某一属性（如双）在统计学上呈现出 3 倍标准差以上的偏离时，模型会介入，寻找概率回归的’转折点’。",
     icon: <Microscope className="w-5 h-5 text-emerald-500" />,
     color: "text-emerald-500",
     bg: "bg-emerald-50"
-  },  {
+  },
+  {
     id: "density",
     name: "密集簇群共振 (Density Clustering)",
     short: "寻找能量爆发点",
@@ -116,6 +171,22 @@ const AI_MODELS_DOCS = [
     bg: "bg-pink-50"
   }
 ];
+
+// 全局自增ID计数器，确保每个预测ID唯一
+let idCounter = 0;
+
+// ✅ 优化：自定义比较函数，基于内容指纹而非引用比较，避免 allBlocks 引用变化触发不必要的重渲染
+const arePropsEqual = (prev: AIPredictionProps, next: AIPredictionProps) => {
+  // rules 引用比较（通常不会频繁变化）
+  if (prev.rules !== next.rules) return false;
+
+  // allBlocks 基于内容比较（长度 + 首尾高度）
+  if (prev.allBlocks.length !== next.allBlocks.length) return false;
+  if (prev.allBlocks.length === 0 && next.allBlocks.length === 0) return true;
+  if (prev.allBlocks[0]?.height !== next.allBlocks[0]?.height) return false;
+  if (prev.allBlocks[prev.allBlocks.length - 1]?.height !== next.allBlocks[next.allBlocks.length - 1]?.height) return false;
+  return true;
+};
 
 const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) => {
   const [activeFilter, setActiveFilter] = useState<PredictionFilter>('ALL');
@@ -534,7 +605,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
             // 单双预测记录
             newPredictions.push({
               ...m.result,
-              id: `pred-${m.rule.id}-parity-${Date.now()}-${Math.random()}`,
+              id: `pred-${m.rule.id}-parity-${Date.now()}-${Math.random().toString(36).slice(2)}-${(++idCounter)}`,
               timestamp: Date.now(),
               resolved: false,
               ruleId: m.rule.id,
@@ -549,7 +620,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
             // 大小预测记录
             newPredictions.push({
               ...m.result,
-              id: `pred-${m.rule.id}-size-${Date.now()}-${Math.random()}`,
+              id: `pred-${m.rule.id}-size-${Date.now()}-${Math.random().toString(36).slice(2)}-${(++idCounter)}`,
               timestamp: Date.now(),
               resolved: false,
               ruleId: m.rule.id,
@@ -567,7 +638,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
           if (!existsInSet) {
             newPredictions.push({
               ...m.result,
-              id: `pred-${m.rule.id}-${Date.now()}-${Math.random()}`,
+              id: `pred-${m.rule.id}-${Date.now()}-${Math.random().toString(36).slice(2)}-${(++idCounter)}`,
               timestamp: Date.now(),
               resolved: false,
               ruleId: m.rule.id,
@@ -710,16 +781,18 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
                 }).catch(e => console.error('[预测更新] 批量补充验证保存失败:', e));
               });
 
-              // 重新计算模型统计
+              // 重新计算模型统计 - 追踪所有贡献模型
               const allResolvedRecords = updated.filter(h => h.resolved);
               const recalcStats: Record<string, { total: number; correct: number }> = {};
               allResolvedRecords.forEach(item => {
-                const model = item.detectedCycle;
-                if (model) {
+                const models = item.contributingModels && item.contributingModels.length > 0
+                  ? item.contributingModels
+                  : (item.detectedCycle ? [item.detectedCycle] : []);
+                models.forEach(model => {
                   if (!recalcStats[model]) recalcStats[model] = { total: 0, correct: 0 };
                   recalcStats[model].total++;
                   if (item.isParityCorrect || item.isSizeCorrect) recalcStats[model].correct++;
-                }
+                });
               });
               setModelStats(recalcStats);
               fetch('http://localhost:3001/api/ai/model-stats', {
@@ -767,13 +840,15 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       
       // 更新模型统计数据 - 基于所有已验证的记录重新计算，而不是累加
       if (newlyResolved.length > 0) {
-        // 重新计算所有已验证记录的模型统计
+        // 重新计算所有已验证记录的模型统计 - 追踪所有贡献模型
         const allResolvedRecords = newHistory.filter(h => h.resolved);
         const recalculatedStats: Record<string, { total: number; correct: number }> = {};
-        
+
         allResolvedRecords.forEach(item => {
-          const model = item.detectedCycle;
-          if (model) {
+          const models = item.contributingModels && item.contributingModels.length > 0
+            ? item.contributingModels
+            : (item.detectedCycle ? [item.detectedCycle] : []);
+          models.forEach(model => {
             if (!recalculatedStats[model]) {
               recalculatedStats[model] = { total: 0, correct: 0 };
             }
@@ -781,7 +856,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
             if (item.isParityCorrect || item.isSizeCorrect) {
               recalculatedStats[model].correct++;
             }
-          }
+          });
         });
         
         setModelStats(recalculatedStats);
@@ -849,7 +924,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
 
   // 计算模型性能排行（使用累计统计数据）
   const modelPerformance = useMemo(() => {
-    // 定义所有9个模型
+    // 定义所有16个模型
     const allModels = [
       '隐马尔可夫模型',
       'LSTM时间序列',
@@ -862,7 +937,11 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       '密集簇群共振',
       '游程编码分析',
       '斐波那契回撤',
-      '梯度动量模型'
+      '梯度动量模型',
+      'EMA交叉分析',
+      '卡方检验模型',
+      'N-gram模式识别',
+      '集成自适应投票'
     ];
     
     return allModels.map(model => {
@@ -1201,6 +1280,10 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
                 <option value="游程编码分析">游程编码分析</option>
                 <option value="斐波那契回撤">斐波那契回撤</option>
                 <option value="梯度动量模型">梯度动量模型</option>
+                <option value="EMA交叉分析">EMA交叉分析</option>
+                <option value="卡方检验模型">卡方检验模型</option>
+                <option value="N-gram模式识别">N-gram模式识别</option>
+                <option value="集成自适应投票">集成自适应投票</option>
               </select>
             </div>
 
@@ -1410,7 +1493,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       </section>
     </div>
   );
-});
+}, arePropsEqual);  // ✅ 使用内容指纹比较，减少不必要的重渲染
 
 
 

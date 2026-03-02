@@ -15,6 +15,7 @@ server/node_modules
 dist
 dist-ssr
 build
+.next
 
 # Environment variables
 .env

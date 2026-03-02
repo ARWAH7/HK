@@ -540,10 +540,11 @@ export const runEMACrossoverModel = (seq: string, type: 'parity' | 'size'): Mode
 
   const primaryChar = type === 'parity' ? 'O' : 'B';
 
-  // 将序列转化为数值 (1 = primary, 0 = secondary)
-  const numSeq = Array.from(seq).map(c => c === primaryChar ? 1 : 0);
+  // seq[0]=最新, seq[end]=最旧; EMA需要从旧到新计算, 所以反转序列
+  const reversedSeq = Array.from(seq).reverse();
+  const numSeq = reversedSeq.map(c => c === primaryChar ? 1 : 0);
 
-  // 计算 EMA
+  // 计算 EMA (从旧到新)
   const calcEMA = (data: number[], period: number): number[] => {
     const k = 2 / (period + 1);
     const ema: number[] = [data[0]];
@@ -556,30 +557,41 @@ export const runEMACrossoverModel = (seq: string, type: 'parity' | 'size'): Mode
   const fastEMA = calcEMA(numSeq, 5);  // 快线
   const slowEMA = calcEMA(numSeq, 12); // 慢线
 
-  // 检测交叉信号
-  const fast0 = fastEMA[0];
-  const slow0 = slowEMA[0];
-  const fast1 = fastEMA[1];
-  const slow1 = slowEMA[1];
+  // 检测最近的交叉信号 (数组末尾=最新数据)
+  const last = len - 1;
+  const fastCurr = fastEMA[last];
+  const slowCurr = slowEMA[last];
+  const fastPrev = fastEMA[last - 1];
+  const slowPrev = slowEMA[last - 1];
 
   // 金叉 (快线从下穿上) → 近期主值加速上升 → 均值回归预测副值
-  if (fast0 > slow0 && fast1 <= slow1 && fast0 > 0.6) {
+  if (fastCurr > slowCurr && fastPrev <= slowPrev && fastCurr > 0.55) {
     const val = type === 'parity' ? 'EVEN' : 'SMALL';
     return { match: true, val: val as any, conf: 91, modelName: 'EMA交叉分析' };
   }
 
   // 死叉 (快线从上穿下) → 近期副值加速上升 → 均值回归预测主值
-  if (fast0 < slow0 && fast1 >= slow1 && fast0 < 0.4) {
+  if (fastCurr < slowCurr && fastPrev >= slowPrev && fastCurr < 0.45) {
     const val = type === 'parity' ? 'ODD' : 'BIG';
     return { match: true, val: val as any, conf: 91, modelName: 'EMA交叉分析' };
   }
 
   // 强趋势偏离 (两条EMA均偏向同一方向且距离大)
-  if (Math.abs(fast0 - slow0) > 0.15 && fast0 > 0.65) {
+  if (Math.abs(fastCurr - slowCurr) > 0.12 && fastCurr > 0.6) {
     const val = type === 'parity' ? 'EVEN' : 'SMALL';
     return { match: true, val: val as any, conf: 90, modelName: 'EMA交叉分析' };
   }
-  if (Math.abs(fast0 - slow0) > 0.15 && fast0 < 0.35) {
+  if (Math.abs(fastCurr - slowCurr) > 0.12 && fastCurr < 0.4) {
+    const val = type === 'parity' ? 'ODD' : 'BIG';
+    return { match: true, val: val as any, conf: 90, modelName: 'EMA交叉分析' };
+  }
+
+  // 近期EMA极端偏离 (单条EMA显著偏离0.5)
+  if (fastCurr > 0.7) {
+    const val = type === 'parity' ? 'EVEN' : 'SMALL';
+    return { match: true, val: val as any, conf: 90, modelName: 'EMA交叉分析' };
+  }
+  if (fastCurr < 0.3) {
     const val = type === 'parity' ? 'ODD' : 'BIG';
     return { match: true, val: val as any, conf: 90, modelName: 'EMA交叉分析' };
   }
@@ -595,7 +607,6 @@ export const runChiSquaredModel = (seq: string, type: 'parity' | 'size'): ModelR
   if (len < 20) return { match: false, val: 'NEUTRAL', conf: 0, modelName: '卡方检验模型' };
 
   const primaryChar = type === 'parity' ? 'O' : 'B';
-  const secondaryChar = type === 'parity' ? 'E' : 'S';
 
   // 将序列分成4个等长窗口，检验分布均匀性
   const windowSize = Math.floor(len / 4);
@@ -611,24 +622,47 @@ export const runChiSquaredModel = (seq: string, type: 'parity' | 'size'): ModelR
     chiSquared += ((count - expected) ** 2) / expected;
   }
 
-  // 卡方值 > 7.815 (df=3, p<0.05) → 分布不均匀
-  if (chiSquared > 7.815) {
-    // 近期窗口的偏向
-    const recentCount = windowCounts[0];
-    const recentRatio = recentCount / windowSize;
+  // 近期窗口的偏向 (seq[0]=最新, 窗口0=最新数据)
+  const recentCount = windowCounts[0];
+  const recentRatio = recentCount / windowSize;
 
-    if (recentRatio > 0.65) {
-      // 近期偏向主值 → 回归预测副值
+  // 策略1: 卡方值 > 6.0 (df=3, p<0.11) → 分布显著不均匀
+  if (chiSquared > 6.0) {
+    if (recentRatio > 0.6) {
       const val = type === 'parity' ? 'EVEN' : 'SMALL';
-      const conf = Math.min(95, 90 + Math.floor(chiSquared / 5));
+      // 卡方值特别高时(>10)，提高置信度到92-95
+      const conf = chiSquared > 10 ? Math.min(95, 92 + Math.floor((chiSquared - 10) / 3)) : Math.min(95, 91 + Math.floor(chiSquared / 5));
       return { match: true, val: val as any, conf, modelName: '卡方检验模型' };
+    }
+    if (recentRatio < 0.4) {
+      const val = type === 'parity' ? 'ODD' : 'BIG';
+      const conf = chiSquared > 10 ? Math.min(95, 92 + Math.floor((chiSquared - 10) / 3)) : Math.min(95, 91 + Math.floor(chiSquared / 5));
+      return { match: true, val: val as any, conf, modelName: '卡方检验模型' };
+    }
+  }
+
+  // 策略2: 卡方值中等 (>4.0) 但近期窗口偏向极端（放宽recentRatio条件）
+  if (chiSquared > 4.0) {
+    if (recentRatio > 0.65) {
+      const val = type === 'parity' ? 'EVEN' : 'SMALL';
+      return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
     }
     if (recentRatio < 0.35) {
-      // 近期偏向副值 → 回归预测主值
       const val = type === 'parity' ? 'ODD' : 'BIG';
-      const conf = Math.min(95, 90 + Math.floor(chiSquared / 5));
-      return { match: true, val: val as any, conf, modelName: '卡方检验模型' };
+      return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
     }
+  }
+
+  // 策略3: 整体偏差大 — 全序列主值占比极端
+  const totalPrimary = (seq.match(new RegExp(primaryChar, 'g')) || []).length;
+  const overallRatio = totalPrimary / len;
+  if (overallRatio > 0.65 && recentRatio > 0.6) {
+    const val = type === 'parity' ? 'EVEN' : 'SMALL';
+    return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
+  }
+  if (overallRatio < 0.35 && recentRatio < 0.4) {
+    const val = type === 'parity' ? 'ODD' : 'BIG';
+    return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
   }
 
   return { match: false, val: 'NEUTRAL', conf: 0, modelName: '卡方检验模型' };
@@ -718,7 +752,9 @@ export const runEnsembleVotingModel = (seq: string, type: 'parity' | 'size'): Mo
     runGradientMomentumModel(seq, type),
     runEMACrossoverModel(seq, type),
     runChiSquaredModel(seq, type),
-    runNgramModel(seq, type)
+    runNgramModel(seq, type),
+    runFibonacciModel(seq, type),
+    runWaveletModel(seq, type)
   ];
 
   // 统计投票
@@ -734,7 +770,8 @@ export const runEnsembleVotingModel = (seq: string, type: 'parity' | 'size'): Mo
     }
   }
 
-  if (totalVoters < 3) return { match: false, val: 'NEUTRAL', conf: 0, modelName: '集成自适应投票' };
+  // 至少2个模型投票才有意义
+  if (totalVoters < 2) return { match: false, val: 'NEUTRAL', conf: 0, modelName: '集成自适应投票' };
 
   // 找到最高票数的预测
   let bestVal = 'NEUTRAL';
@@ -749,10 +786,14 @@ export const runEnsembleVotingModel = (seq: string, type: 'parity' | 'size'): Mo
     }
   }
 
-  // 需要多数票 (> 50%) 且至少3票
+  // 需要多数票 (> 50%) 且至少2票
   const voteRatio = bestCount / totalVoters;
-  if (voteRatio >= 0.5 && bestCount >= 3) {
-    const conf = Math.min(98, Math.round(bestAvgConf * (0.8 + voteRatio * 0.2)));
+  if (voteRatio >= 0.5 && bestCount >= 2) {
+    // 基础置信度提高底线
+    let conf = Math.round(bestAvgConf * (0.85 + voteRatio * 0.15));
+    // 高一致性奖励: 70%+ 一致时额外 +2~+5
+    if (voteRatio >= 0.7) conf += Math.round((voteRatio - 0.7) * 20);
+    conf = Math.min(98, conf);
     return { match: true, val: bestVal as any, conf, modelName: '集成自适应投票' };
   }
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { Search, RotateCcw, Settings, X, Loader2, ShieldCheck, AlertCircle, BarChart3, PieChart, Plus, Trash2, Edit3, Grid3X3, LayoutDashboard, Palette, Flame, Layers, SortAsc, SortDesc, CheckSquare, Square, Filter, ChevronRight, ChevronLeft, BrainCircuit, Activity, Gamepad2, Key } from 'lucide-react';
 import { BlockData, IntervalRule, FollowedPattern } from './types';
 import { fetchLatestBlock, fetchBlockByNum, fetchBlockRange } from './utils/apiHelpers';
@@ -116,6 +116,9 @@ const App: React.FC = () => {
   const blocksCacheRef = useRef(new Map<string, CacheEntry>());  // ✅ 阶段3：添加缓存 ref（包含时间戳和规则ID）
   const preloadedRules = useRef<Set<string>>(new Set());  // ✅ 追踪哪些规则已经预加载
   const preloadAllRulesRef = useRef<() => Promise<void>>(() => Promise.resolve());  // ✅ 预加载函数 ref，避免 WebSocket 闭包过期
+  const skipNextLoadRef = useRef(false);  // ✅ 优化：规则切换时跳过重复加载
+  const cacheSyncTimerRef = useRef<NodeJS.Timeout | null>(null);  // ✅ 优化：延迟同步 blocksCache 状态
+  const loadAbortRef = useRef<AbortController | null>(null);  // ✅ 优化：取消过期的数据加载请求
 
   // 从后端加载所有配置数据
   useEffect(() => {
@@ -432,19 +435,19 @@ const App: React.FC = () => {
     preloadAllRulesRef.current = preloadAllRules;
   }, [preloadAllRules]);
 
-  // 从后端 API 加载历史数据的函数（优化版：优先使用缓存）
+  // 从后端 API 加载历史数据的函数（优化版：优先使用缓存 + 请求取消）
   const loadHistoryBlocks = useCallback(async (forceReload: boolean = false) => {
     try {
       const ruleValue = activeRule?.value || 1;
       const startBlock = activeRule?.startBlock || 0;
       const cacheKey = `${ruleValue}-${startBlock}`;
       const BACKEND_API_URL = 'http://localhost:3001';
-      
+
       // ✅ 检查缓存
       if (!forceReload && blocksCacheRef.current.has(cacheKey)) {
         const cacheEntry = blocksCacheRef.current.get(cacheKey)!;
         const cacheAge = Date.now() - cacheEntry.timestamp;
-        
+
         // 缓存未过期（30秒）
         if (cacheAge < 30000) {
           console.log(`[缓存] ✅ 使用缓存（0ms），规则: ${activeRule?.label}`);
@@ -454,35 +457,50 @@ const App: React.FC = () => {
           console.log(`[缓存] ⏰ 缓存已过期 (${(cacheAge / 1000).toFixed(1)}秒)，重新加载`);
         }
       }
-      
+
+      // ✅ 优化：取消之前的 in-flight 请求（快速切换规则时避免旧数据覆盖新数据）
+      if (loadAbortRef.current) {
+        loadAbortRef.current.abort();
+      }
+      const abortController = new AbortController();
+      loadAbortRef.current = abortController;
+
       // 缓存不存在或已过期，从后端加载
       setIsLoading(true);
       console.log(`[API] 🚀 加载规则: ${activeRule?.label}`);
-      
+
       const response = await fetch(
-        `${BACKEND_API_URL}/api/blocks?limit=264&ruleValue=${ruleValue}&startBlock=${startBlock}`
+        `${BACKEND_API_URL}/api/blocks?limit=264&ruleValue=${ruleValue}&startBlock=${startBlock}`,
+        { signal: abortController.signal }
       );
       const result = await response.json();
-      
+
+      // ✅ 检查请求是否已被取消（快速切换后旧请求的响应应丢弃）
+      if (abortController.signal.aborted) return;
+
       if (result.success) {
         setAllBlocks(result.data);
-        
-        // 更新缓存
-        setBlocksCache(prev => {
-          const newCache = new Map(prev);
-          newCache.set(cacheKey, {
-            data: result.data,
-            timestamp: Date.now(),
-            ruleId: activeRule?.id || ''
-          });
-          return newCache;
-        });
-        
+
+        // 更新缓存（ref + state）
+        const newCacheEntry: CacheEntry = {
+          data: result.data,
+          timestamp: Date.now(),
+          ruleId: activeRule?.id || ''
+        };
+
+        // 先更新 ref（立即可用）
+        const newRefCache = new Map(blocksCacheRef.current);
+        newRefCache.set(cacheKey, newCacheEntry);
+        blocksCacheRef.current = newRefCache;
+
+        // 再更新 state（触发依赖组件更新）
+        setBlocksCache(new Map(newRefCache));
+
         // 标记为已预加载
         if (activeRule?.id) {
           preloadedRules.current.add(activeRule.id);
         }
-        
+
         console.log(`[API] ✅ 加载完成: ${result.data.length} 条`);
         if (result.metadata) {
           console.log(`[API] 📊 过滤统计: 原始 ${result.metadata.totalRaw} 条 → 过滤后 ${result.metadata.totalFiltered} 条 → 返回 ${result.data.length} 条`);
@@ -494,7 +512,12 @@ const App: React.FC = () => {
         console.error('[API] 加载失败:', result.error);
       }
       setIsLoading(false);
-    } catch (error) {
+    } catch (error: any) {
+      // ✅ 忽略被取消的请求错误
+      if (error?.name === 'AbortError') {
+        console.log(`[API] ⏹️ 请求已取消（规则已切换）`);
+        return;
+      }
       console.error('[API] 加载历史数据失败:', error);
       console.warn('[API] ⚠️ 请确保后端服务正在运行 (npm run dev)');
       setIsLoading(false);
@@ -543,7 +566,14 @@ const App: React.FC = () => {
   // 规则变化时智能加载数据（优先使用缓存）
   useEffect(() => {
     if (!wsConnected || !activeRule) return;
-    
+
+    // ✅ 优化：如果点击切换时已从缓存同步设置了数据，跳过重复加载
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      console.log(`[规则变化] 切换到规则: ${activeRule.label}（缓存已同步，跳过重复加载）`);
+      return;
+    }
+
     console.log(`[规则变化] 切换到规则: ${activeRule.label}`);
     loadHistoryBlocks(false);  // ✅ 优先使用缓存
   }, [activeRuleId, wsConnected, loadHistoryBlocks]);
@@ -556,9 +586,11 @@ const App: React.FC = () => {
     let reconnectTimer: NodeJS.Timeout;
     let isFirstConnection = true;
     let reconnectAttempts = 0;
+    let isCleanedUp = false; // 防止 StrictMode 清理后继续重连
     const MAX_RECONNECT_ATTEMPTS = 30; // 最大重连次数
 
     const connect = () => {
+      if (isCleanedUp) return; // StrictMode 清理后不再连接
       try {
         console.log('[连接] 正在连接到 Redis 后端 WebSocket...');
         ws = new WebSocket(BACKEND_WS_URL);
@@ -596,27 +628,28 @@ const App: React.FC = () => {
               console.log(`[Redis WS] 📦 新区块: ${block.height} (${block.type}, ${block.sizeType})`);
             }
             
-            // ✅ 步骤1：同步更新所有已缓存规则
-            setBlocksCache(prevCache => {
-              const newCache = new Map(prevCache);
+            // ✅ 步骤1：先同步更新 ref 缓存（零延迟），再延迟更新 state（减少重渲染）
+            {
+              const refCache = blocksCacheRef.current;
+              const newCache = new Map(refCache);
               const now = Date.now();
               let updateCount = 0;
-              
+
               // 遍历所有已缓存的规则
               Array.from(newCache.entries()).forEach(([cacheKey, cacheEntry]: [string, CacheEntry]) => {
                 const [ruleValue, startBlock] = cacheKey.split('-').map(Number);
-                
+
                 // 检查新区块是否符合这个规则
                 let isAligned = false;
                 if (ruleValue <= 1) {
                   isAligned = true;
                 } else if (startBlock > 0) {
-                  isAligned = block.height >= startBlock && 
+                  isAligned = block.height >= startBlock &&
                               (block.height - startBlock) % ruleValue === 0;
                 } else {
                   isAligned = block.height % ruleValue === 0;
                 }
-                
+
                 // 如果符合规则，更新缓存
                 if (isAligned) {
                   const cachedData = cacheEntry.data;
@@ -636,17 +669,26 @@ const App: React.FC = () => {
                   }
                 }
               });
-              
+
               if (updateCount > 0) {
-                // 同步更新 ref，确保其他代码能立即读取到最新缓存
+                // ✅ 立即更新 ref（零延迟，其他代码可立即读取最新缓存）
                 blocksCacheRef.current = newCache;
                 if (process.env.NODE_ENV === 'development') {
                   console.log(`[WebSocket] 🔄 同步更新 ${updateCount} 个规则缓存（区块: ${block.height}）`);
                 }
-              }
 
-              return newCache;
-            });
+                // ✅ 延迟 2 秒批量同步 state（减少 dragonListBlocks 重算频率）
+                if (cacheSyncTimerRef.current) {
+                  clearTimeout(cacheSyncTimerRef.current);
+                }
+                cacheSyncTimerRef.current = setTimeout(() => {
+                  startTransition(() => {
+                    setBlocksCache(new Map(blocksCacheRef.current));
+                  });
+                  cacheSyncTimerRef.current = null;
+                }, 2000);
+              }
+            }
             
             // ✅ 步骤2：直接更新当前激活规则的显示数据（不再依赖 setTimeout + stale ref）
             const currentRule = activeRuleRef.current;
@@ -688,8 +730,9 @@ const App: React.FC = () => {
         };
 
         ws.onclose = () => {
+          if (isCleanedUp) return; // StrictMode 清理导致的关闭，不重连
           setWsConnected(false);
-          
+
           // 检查重连次数
           reconnectAttempts++;
           if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
@@ -703,6 +746,7 @@ const App: React.FC = () => {
         };
 
         ws.onerror = (error) => {
+          if (isCleanedUp) return; // StrictMode 清理导致的错误，忽略
           console.warn('[连接] WebSocket 错误:', error);
           setConnectionError('WebSocket 连接遇到错误');
           // 不在这里设置 wsConnected 为 false，让 onclose 处理
@@ -738,15 +782,20 @@ const App: React.FC = () => {
 
     // 清理函数
     return () => {
+      isCleanedUp = true; // 标记已清理，阻止后续重连
       if (ws) {
         try {
           ws.close();
         } catch (error) {
-          console.warn('[连接] 关闭 WebSocket 时出错:', error);
+          // StrictMode 下可能在连接建立前关闭，忽略此警告
         }
       }
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
+      }
+      // ✅ 清理缓存同步定时器
+      if (cacheSyncTimerRef.current) {
+        clearTimeout(cacheSyncTimerRef.current);
       }
     };
   }, []); // ✅ 空依赖数组，只在组件挂载时连接一次
@@ -1102,6 +1151,7 @@ const App: React.FC = () => {
       const ce = blocksCacheRef.current.get(ck);
       if (ce && (Date.now() - ce.timestamp < 30000)) {
         setAllBlocks(ce.data);
+        skipNextLoadRef.current = true;  // ✅ 优化：跳过 useEffect 中的重复加载
       }
     }
     setActiveRuleId(ruleId);
@@ -1213,6 +1263,7 @@ const App: React.FC = () => {
                   const cached = blocksCacheRef.current.get(cacheKey);
                   if (cached && (Date.now() - cached.timestamp < 30000)) {
                     setAllBlocks(cached.data);
+                    skipNextLoadRef.current = true;  // ✅ 优化：跳过 useEffect 中的重复加载
                   }
                   setActiveRuleId(rule.id);
                 }}
@@ -1403,6 +1454,7 @@ const App: React.FC = () => {
                       const ce = blocksCacheRef.current.get(ck);
                       if (ce && (Date.now() - ce.timestamp < 30000)) {
                         setAllBlocks(ce.data);
+                        skipNextLoadRef.current = true;  // ✅ 优化：跳过 useEffect 中的重复加载
                       }
                       setActiveRuleId(r.id);
                       setShowQuickSwitcher(false);
