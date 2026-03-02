@@ -39,6 +39,7 @@ export interface AIPredictionResult {
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   entropyScore: number; // NEW: Quantitative measure of noise
   targetHeight?: number;
+  contributingModels?: string[]; // 所有触发的模型名称列表
 }
 
 export interface PredictionHistoryItem extends AIPredictionResult {

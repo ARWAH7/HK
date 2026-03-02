@@ -332,6 +332,9 @@ export const runDeepAnalysisV5 = (
     else if (agreeCount === 1) confS = Math.max(85, confS - 3);
   }
 
+  // 收集所有触发的模型名称（去重）
+  const contributingModels = [...new Set(candidates.map(c => c.modelName))];
+
   // 确定主导模型（用于显示）
   const primaryModel = confP >= confS ? parityModel : sizeModel;
   const maxConf = Math.max(confP, confS);
@@ -379,6 +382,7 @@ export const runDeepAnalysisV5 = (
     riskLevel: entropy < 60 ? 'LOW' : entropy < 85 ? 'MEDIUM' : 'HIGH',
     entropyScore: entropy,
     targetHeight,
-    ruleId: rule.id
+    ruleId: rule.id,
+    contributingModels
   };
 };

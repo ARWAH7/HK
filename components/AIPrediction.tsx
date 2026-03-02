@@ -768,16 +768,18 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
                 }).catch(e => console.error('[预测更新] 批量补充验证保存失败:', e));
               });
 
-              // 重新计算模型统计
+              // 重新计算模型统计 - 追踪所有贡献模型
               const allResolvedRecords = updated.filter(h => h.resolved);
               const recalcStats: Record<string, { total: number; correct: number }> = {};
               allResolvedRecords.forEach(item => {
-                const model = item.detectedCycle;
-                if (model) {
+                const models = item.contributingModels && item.contributingModels.length > 0
+                  ? item.contributingModels
+                  : (item.detectedCycle ? [item.detectedCycle] : []);
+                models.forEach(model => {
                   if (!recalcStats[model]) recalcStats[model] = { total: 0, correct: 0 };
                   recalcStats[model].total++;
                   if (item.isParityCorrect || item.isSizeCorrect) recalcStats[model].correct++;
-                }
+                });
               });
               setModelStats(recalcStats);
               fetch('http://localhost:3001/api/ai/model-stats', {
@@ -825,13 +827,15 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       
       // 更新模型统计数据 - 基于所有已验证的记录重新计算，而不是累加
       if (newlyResolved.length > 0) {
-        // 重新计算所有已验证记录的模型统计
+        // 重新计算所有已验证记录的模型统计 - 追踪所有贡献模型
         const allResolvedRecords = newHistory.filter(h => h.resolved);
         const recalculatedStats: Record<string, { total: number; correct: number }> = {};
-        
+
         allResolvedRecords.forEach(item => {
-          const model = item.detectedCycle;
-          if (model) {
+          const models = item.contributingModels && item.contributingModels.length > 0
+            ? item.contributingModels
+            : (item.detectedCycle ? [item.detectedCycle] : []);
+          models.forEach(model => {
             if (!recalculatedStats[model]) {
               recalculatedStats[model] = { total: 0, correct: 0 };
             }
@@ -839,7 +843,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
             if (item.isParityCorrect || item.isSizeCorrect) {
               recalculatedStats[model].correct++;
             }
-          }
+          });
         });
         
         setModelStats(recalculatedStats);

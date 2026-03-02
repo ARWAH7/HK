@@ -2160,7 +2160,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    }
                  }
                  const totalMatches = matchOdd + matchEven;
-                 if (totalMatches >= minMatch) {
+                 const majorityRatioP = totalMatches > 0 ? Math.max(matchOdd, matchEven) / totalMatches : 0;
+                 const requiredRatioP = 0.5 + (minMatch * 0.03); // minMatch=2→0.56, minMatch=8→0.74
+                 if (totalMatches >= minMatch && majorityRatioP >= requiredRatioP) {
                    type = 'PARITY';
                    target = matchOdd >= matchEven ? 'ODD' : 'EVEN';
                    if (ts.includes(target)) shouldBet = true;
@@ -2180,7 +2182,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    }
                  }
                  const totalMatches = matchBig + matchSmall;
-                 if (totalMatches >= minMatch) {
+                 const majorityRatioS = totalMatches > 0 ? Math.max(matchBig, matchSmall) / totalMatches : 0;
+                 const requiredRatioS = 0.5 + (minMatch * 0.03);
+                 if (totalMatches >= minMatch && majorityRatioS >= requiredRatioS) {
                    type = 'SIZE';
                    target = matchBig >= matchSmall ? 'BIG' : 'SMALL';
                    if (ts.includes(target)) shouldBet = true;

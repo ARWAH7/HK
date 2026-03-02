@@ -626,27 +626,28 @@ export const runChiSquaredModel = (seq: string, type: 'parity' | 'size'): ModelR
   const recentCount = windowCounts[0];
   const recentRatio = recentCount / windowSize;
 
-  // 策略1: 卡方值 > 7.815 (df=3, p<0.05) → 分布显著不均匀
-  if (chiSquared > 7.815) {
+  // 策略1: 卡方值 > 6.0 (df=3, p<0.11) → 分布显著不均匀
+  if (chiSquared > 6.0) {
     if (recentRatio > 0.6) {
       const val = type === 'parity' ? 'EVEN' : 'SMALL';
-      const conf = Math.min(95, 91 + Math.floor(chiSquared / 5));
+      // 卡方值特别高时(>10)，提高置信度到92-95
+      const conf = chiSquared > 10 ? Math.min(95, 92 + Math.floor((chiSquared - 10) / 3)) : Math.min(95, 91 + Math.floor(chiSquared / 5));
       return { match: true, val: val as any, conf, modelName: '卡方检验模型' };
     }
     if (recentRatio < 0.4) {
       const val = type === 'parity' ? 'ODD' : 'BIG';
-      const conf = Math.min(95, 91 + Math.floor(chiSquared / 5));
+      const conf = chiSquared > 10 ? Math.min(95, 92 + Math.floor((chiSquared - 10) / 3)) : Math.min(95, 91 + Math.floor(chiSquared / 5));
       return { match: true, val: val as any, conf, modelName: '卡方检验模型' };
     }
   }
 
-  // 策略2: 卡方值中等 (>4.0) 但近期窗口偏向极端
+  // 策略2: 卡方值中等 (>4.0) 但近期窗口偏向极端（放宽recentRatio条件）
   if (chiSquared > 4.0) {
-    if (recentRatio > 0.7) {
+    if (recentRatio > 0.65) {
       const val = type === 'parity' ? 'EVEN' : 'SMALL';
       return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
     }
-    if (recentRatio < 0.3) {
+    if (recentRatio < 0.35) {
       const val = type === 'parity' ? 'ODD' : 'BIG';
       return { match: true, val: val as any, conf: 90, modelName: '卡方检验模型' };
     }
@@ -788,7 +789,11 @@ export const runEnsembleVotingModel = (seq: string, type: 'parity' | 'size'): Mo
   // 需要多数票 (> 50%) 且至少2票
   const voteRatio = bestCount / totalVoters;
   if (voteRatio >= 0.5 && bestCount >= 2) {
-    const conf = Math.min(98, Math.round(bestAvgConf * (0.8 + voteRatio * 0.2)));
+    // 基础置信度提高底线
+    let conf = Math.round(bestAvgConf * (0.85 + voteRatio * 0.15));
+    // 高一致性奖励: 70%+ 一致时额外 +2~+5
+    if (voteRatio >= 0.7) conf += Math.round((voteRatio - 0.7) * 20);
+    conf = Math.min(98, conf);
     return { match: true, val: bestVal as any, conf, modelName: '集成自适应投票' };
   }
 
