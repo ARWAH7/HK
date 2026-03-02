@@ -3483,9 +3483,19 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   );
 };
 
+// ✅ 优化：基于内容指纹比较 allBlocks，而非引用比较
+// 避免 WebSocket 推送新区块时 allBlocks 引用变化导致整个组件重渲染
 export default memo(SimulatedBetting, (prevProps, nextProps) => {
-  return (
-    prevProps.allBlocks === nextProps.allBlocks &&
-    prevProps.rules === nextProps.rules
-  );
+  // rules 引用比较
+  if (prevProps.rules !== nextProps.rules) return false;
+
+  // allBlocks 基于内容比较（长度 + 首尾高度）
+  const pBlocks = prevProps.allBlocks;
+  const nBlocks = nextProps.allBlocks;
+  if (pBlocks.length !== nBlocks.length) return false;
+  if (pBlocks.length === 0 && nBlocks.length === 0) return true;
+  if (pBlocks[0]?.height !== nBlocks[0]?.height) return false;
+  if (pBlocks[pBlocks.length - 1]?.height !== nBlocks[nBlocks.length - 1]?.height) return false;
+
+  return true;
 });

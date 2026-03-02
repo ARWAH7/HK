@@ -175,6 +175,19 @@ const AI_MODELS_DOCS = [
 // 全局自增ID计数器，确保每个预测ID唯一
 let idCounter = 0;
 
+// ✅ 优化：自定义比较函数，基于内容指纹而非引用比较，避免 allBlocks 引用变化触发不必要的重渲染
+const arePropsEqual = (prev: AIPredictionProps, next: AIPredictionProps) => {
+  // rules 引用比较（通常不会频繁变化）
+  if (prev.rules !== next.rules) return false;
+
+  // allBlocks 基于内容比较（长度 + 首尾高度）
+  if (prev.allBlocks.length !== next.allBlocks.length) return false;
+  if (prev.allBlocks.length === 0 && next.allBlocks.length === 0) return true;
+  if (prev.allBlocks[0]?.height !== next.allBlocks[0]?.height) return false;
+  if (prev.allBlocks[prev.allBlocks.length - 1]?.height !== next.allBlocks[next.allBlocks.length - 1]?.height) return false;
+  return true;
+};
+
 const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) => {
   const [activeFilter, setActiveFilter] = useState<PredictionFilter>('ALL');
   const [selectedRuleId, setSelectedRuleId] = useState<string>('ALL');
@@ -1480,7 +1493,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       </section>
     </div>
   );
-});
+}, arePropsEqual);  // ✅ 使用内容指纹比较，减少不必要的重渲染
 
 
 

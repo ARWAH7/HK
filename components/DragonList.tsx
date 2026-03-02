@@ -892,12 +892,21 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
 
 DragonList.displayName = 'DragonList';
 
+// ✅ 优化：基于内容指纹比较 allBlocks，减少缓存合并后的不必要重渲染
 export default memo(DragonList, (prevProps, nextProps) => {
-  return (
-    prevProps.allBlocks === nextProps.allBlocks &&
-    prevProps.rules === nextProps.rules &&
-    prevProps.followedPatterns === nextProps.followedPatterns &&
-    prevProps.onToggleFollow === nextProps.onToggleFollow &&
-    prevProps.onJumpToChart === nextProps.onJumpToChart
-  );
+  // 引用比较（不会频繁变化的 props）
+  if (prevProps.rules !== nextProps.rules) return false;
+  if (prevProps.followedPatterns !== nextProps.followedPatterns) return false;
+  if (prevProps.onToggleFollow !== nextProps.onToggleFollow) return false;
+  if (prevProps.onJumpToChart !== nextProps.onJumpToChart) return false;
+
+  // allBlocks 基于内容比较（长度 + 首尾高度）
+  const pBlocks = prevProps.allBlocks;
+  const nBlocks = nextProps.allBlocks;
+  if (pBlocks.length !== nBlocks.length) return false;
+  if (pBlocks.length === 0 && nBlocks.length === 0) return true;
+  if (pBlocks[0]?.height !== nBlocks[0]?.height) return false;
+  if (pBlocks[pBlocks.length - 1]?.height !== nBlocks[nBlocks.length - 1]?.height) return false;
+
+  return true;
 });
