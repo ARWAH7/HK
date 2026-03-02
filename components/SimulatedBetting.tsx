@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { BlockData, IntervalRule } from '../types';
-import { 
-  Gamepad2, Wallet, TrendingUp, History, CheckCircle2, XCircle, 
-  Trash2, Clock, Settings2, PlayCircle, StopCircle, RefreshCw, 
+import { runDeepAnalysisV5, getNextAlignedHeight } from '../utils/aiAnalysis';
+import {
+  Gamepad2, Wallet, TrendingUp, History, CheckCircle2, XCircle,
+  Trash2, Clock, Settings2, PlayCircle, StopCircle, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Target, ArrowRight, Percent, BarChart4,
   Plus, Layers, Activity, PauseCircle, Power, TrendingDown, BrainCircuit, ShieldAlert,
   ZoomIn, X, Maximize2, MoveHorizontal, Sparkles, Scale, Trophy, Shuffle, BarChart2, Flame
@@ -51,6 +52,10 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   // v5.2 新增
   | 'OSCILLATION_REVERSE'   // 振荡反转：连续N次相同后反向下注
   | 'PATTERN_MATCH'         // 模式匹配：历史模式匹配预测
+  // v5.3 新增
+  | 'STREAK_BREAK_REVERSE'  // 确认反转：连续N次+反转确认后跟随反转方向
+  | 'MULTI_MODEL_CONSENSUS' // 多模型共识：至少M个模型一致时才下注
+  | 'DYNAMIC_CYCLE'         // 动态周期：自动识别最强周期模式预测
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -129,6 +134,12 @@ interface StrategyConfig {
   // v5.2: 模式匹配参数
   patternLength?: number;       // 匹配模式长度 (默认4)
   patternMinMatch?: number;     // 最小匹配次数 (默认3)
+  // v5.3: 确认反转参数
+  streakBreakCount?: number;    // 连续N次后等待反转确认 (默认4)
+  // v5.3: 多模型共识参数
+  consensusMinModels?: number;  // 最少共识模型数 (默认5)
+  // v5.3: 动态周期参数
+  cycleMaxLength?: number;      // 最大检测周期长度 (默认8)
 }
 
 interface StrategyState {
@@ -233,91 +244,18 @@ const getBeadRowBlocks = (blocks: BlockData[], rule: IntervalRule, rowIdx: numbe
     }).sort((a, b) => b.height - a.height);
 };
 
-// Helper: AI Analysis (Embedded from AIPrediction logic for self-containment)
+// Helper: AI Analysis - 调用完整16模型 runDeepAnalysisV5
 const runAIAnalysis = (blocks: BlockData[], rule: IntervalRule) => {
-  const checkAlignment = (h: number) => {
-    if (rule.value <= 1) return true;
-    if (rule.startBlock > 0) return h >= rule.startBlock && (h - rule.startBlock) % rule.value === 0;
-    return h % rule.value === 0;
+  const currentHeight = blocks[0]?.height || 0;
+  const targetHeight = getNextAlignedHeight(currentHeight, rule.value, rule.startBlock);
+  const result = runDeepAnalysisV5(blocks, rule, targetHeight);
+  return {
+    shouldPredict: result.shouldPredict,
+    nextP: result.nextParity !== 'NEUTRAL' ? result.nextParity as BetTarget | null : null,
+    confP: result.parityConfidence,
+    nextS: result.nextSize !== 'NEUTRAL' ? result.nextSize as BetTarget | null : null,
+    confS: result.sizeConfidence,
   };
-
-  const ruleBlocks = blocks.filter(b => checkAlignment(b.height)).slice(0, 80);
-  if (ruleBlocks.length < 24) return { shouldPredict: false, nextP: null, confP: 0, nextS: null, confS: 0 };
-
-  const pSeq = ruleBlocks.slice(0, 12).map(b => b.type === 'ODD' ? 'O' : 'E').join('');
-  const sSeq = ruleBlocks.slice(0, 12).map(b => b.sizeType === 'BIG' ? 'B' : 'S').join('');
-  const oddCount = ruleBlocks.filter(b => b.type === 'ODD').length;
-  const bigCount = ruleBlocks.filter(b => b.sizeType === 'BIG').length;
-  const pBias = (oddCount / ruleBlocks.length);
-  const sBias = (bigCount / ruleBlocks.length);
-
-  let nextP: 'ODD'|'EVEN'|null = null;
-  let confP = 50;
-  let nextS: 'BIG'|'SMALL'|null = null;
-  let confS = 50;
-
-  const getBayesianConf = (bias: number) => {
-    const deviation = Math.abs(bias - 0.5);
-    if (deviation > 0.18) return 94;
-    if (deviation > 0.12) return 88;
-    return 50;
-  };
-
-  const checkPeriodicity = (seq: string) => {
-    if (seq.startsWith('OEOEOE') || seq.startsWith('EOEOEO')) return { match: true, val: seq[0] === 'O' ? 'EVEN' : 'ODD', conf: 93 };
-    if (seq.startsWith('OOEEOO') || seq.startsWith('EEOOEE')) return { match: true, val: seq[0] === 'O' ? 'EVEN' : 'ODD', conf: 91 };
-    if (seq.startsWith('BSBSBS') || seq.startsWith('SBSBSB')) return { match: true, val: seq[0] === 'B' ? 'SMALL' : 'BIG', conf: 93 };
-    if (seq.startsWith('BBSSBB') || seq.startsWith('SSBBSS')) return { match: true, val: seq[0] === 'B' ? 'SMALL' : 'BIG', conf: 91 };
-    return { match: false, val: null, conf: 0 };
-  };
-
-  const checkDensity = (seq: string) => {
-    if (seq.startsWith('OOOO')) return { match: true, val: 'ODD', conf: 95 }; 
-    if (seq.startsWith('EEEE')) return { match: true, val: 'EVEN', conf: 95 };
-    if (seq.startsWith('BBBB')) return { match: true, val: 'BIG', conf: 95 };
-    if (seq.startsWith('SSSS')) return { match: true, val: 'SMALL', conf: 95 };
-    return { match: false, val: null, conf: 0 };
-  };
-
-  const pPeriod = checkPeriodicity(pSeq);
-  const pDensity = checkDensity(pSeq);
-  const pBayesConf = getBayesianConf(pBias);
-
-  if (pPeriod.match) { nextP = pPeriod.val as any; confP = pPeriod.conf; }
-  else if (pDensity.match) { nextP = pDensity.val as any; confP = pDensity.conf; }
-  else if (pBayesConf > 90) { nextP = pBias > 0.5 ? 'EVEN' : 'ODD'; confP = pBayesConf; }
-
-  const sPeriod = checkPeriodicity(sSeq);
-  const sDensity = checkDensity(sSeq);
-  const sBayesConf = getBayesianConf(sBias);
-
-  if (sPeriod.match) { nextS = sPeriod.val as any; confS = sPeriod.conf; }
-  else if (sDensity.match) { nextS = sDensity.val as any; confS = sDensity.conf; }
-  else if (sBayesConf > 90) { nextS = sBias > 0.5 ? 'SMALL' : 'BIG'; confS = sBayesConf; }
-
-  // OPTIMIZATION: Enforce Single Best Result (Mutual Exclusion)
-  // Ensure we only output the one result with the highest confidence
-  if (confP > confS) {
-      nextS = null;
-      confS = 0;
-  } else if (confS > confP) {
-      nextP = null;
-      confP = 0;
-  } else {
-      // Tie-breaker: if both equal and valid, default to Parity; if invalid, clear both
-      if (confP >= 90) {
-          nextS = null;
-          confS = 0;
-      } else {
-          nextP = null; confP = 0;
-          nextS = null; confS = 0;
-      }
-  }
-
-  const entropy = Math.round(Math.random() * 20 + 10);
-  const shouldPredict = (confP >= 92 || confS >= 92) && entropy < 40;
-
-  return { shouldPredict, nextP, confP, nextS, confS };
 };
 
 // v5.1: 根据选中的模型ID运行分析
@@ -1055,6 +993,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     if (task.config.autoTarget === 'RULE_BEAD_DRAGON') return { text: `规则珠盘龙(${(task.config.selectedRuleIds || []).length}规)`, color: 'bg-amber-100 text-amber-600' };
     if (task.config.autoTarget === 'OSCILLATION_REVERSE') return { text: `振荡反转(${task.config.oscillationCount || 3}连)`, color: 'bg-sky-100 text-sky-600' };
     if (task.config.autoTarget === 'PATTERN_MATCH') return { text: `模式匹配(${task.config.patternLength || 4}期)`, color: 'bg-fuchsia-100 text-fuchsia-600' };
+    if (task.config.autoTarget === 'STREAK_BREAK_REVERSE') return { text: `确认反转(${task.config.streakBreakCount || 4}连)`, color: 'bg-rose-100 text-rose-600' };
+    if (task.config.autoTarget === 'MULTI_MODEL_CONSENSUS') return { text: `模型共识(≥${task.config.consensusMinModels || 5})`, color: 'bg-violet-100 text-violet-600' };
+    if (task.config.autoTarget === 'DYNAMIC_CYCLE') return { text: `动态周期(≤${task.config.cycleMaxLength || 8})`, color: 'bg-emerald-100 text-emerald-600' };
 
     const ruleLabel = rule?.label || '未知规则';
     const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
@@ -2192,6 +2133,151 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                }
              }
            }
+        } else if (task.config.autoTarget === 'STREAK_BREAK_REVERSE') {
+           // v5.3: 确认反转 - 连续N次后出现反转确认，跟随反转方向
+           if (ruleBlocks.length >= 2) {
+             const streakN = task.config.streakBreakCount || 4;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             if (hasParity) {
+               // 从第2块开始往后看是否有连续N块相同，且第1块（最新）是反转
+               const latest = ruleBlocks[0].type; // 最新一块
+               let streakVal = ruleBlocks[1].type;
+               let streakCount = 0;
+               for (let i = 1; i < ruleBlocks.length; i++) {
+                 if (ruleBlocks[i].type === streakVal) streakCount++;
+                 else break;
+               }
+               // 条件：之前连续N次 + 最新一块反转了
+               if (streakCount >= streakN && latest !== streakVal) {
+                 type = 'PARITY';
+                 target = latest as BetTarget; // 跟随反转方向
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const latest = ruleBlocks[0].sizeType;
+               let streakVal = ruleBlocks[1].sizeType;
+               let streakCount = 0;
+               for (let i = 1; i < ruleBlocks.length; i++) {
+                 if (ruleBlocks[i].sizeType === streakVal) streakCount++;
+                 else break;
+               }
+               if (streakCount >= streakN && latest !== streakVal) {
+                 type = 'SIZE';
+                 target = latest as BetTarget;
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
+        } else if (task.config.autoTarget === 'MULTI_MODEL_CONSENSUS') {
+           // v5.3: 多模型共识 - 运行全部16模型，至少M个模型预测相同方向才下注
+           if (ruleBlocks.length >= 24) {
+             const minConsensus = task.config.consensusMinModels || 5;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             const pSeq = ruleBlocks.slice(0, 40).map(b => b.type === 'ODD' ? 'O' : 'E').join('');
+             const sSeq = ruleBlocks.slice(0, 40).map(b => b.sizeType === 'BIG' ? 'B' : 'S').join('');
+
+             // 运行所有模型
+             const allModelIds = Object.keys(MODEL_RUNNERS);
+             const votes: { type: 'parity' | 'size'; val: BetTarget; model: string }[] = [];
+
+             for (const modelId of allModelIds) {
+               const runner = MODEL_RUNNERS[modelId];
+               if (!runner) continue;
+               if (hasParity) {
+                 const r = runner(pSeq, 'parity');
+                 if (r.match && (r.val === 'ODD' || r.val === 'EVEN')) {
+                   votes.push({ type: 'parity', val: r.val as BetTarget, model: modelId });
+                 }
+               }
+               if (hasSize) {
+                 const r = runner(sSeq, 'size');
+                 if (r.match && (r.val === 'BIG' || r.val === 'SMALL')) {
+                   votes.push({ type: 'size', val: r.val as BetTarget, model: modelId });
+                 }
+               }
+             }
+
+             // 统计单双共识
+             if (hasParity) {
+               const pVotes = votes.filter(v => v.type === 'parity');
+               const oddVotes = pVotes.filter(v => v.val === 'ODD').length;
+               const evenVotes = pVotes.filter(v => v.val === 'EVEN').length;
+               const maxVotes = Math.max(oddVotes, evenVotes);
+               if (maxVotes >= minConsensus) {
+                 type = 'PARITY';
+                 target = oddVotes >= evenVotes ? 'ODD' : 'EVEN';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             // 统计大小共识
+             if (!shouldBet && hasSize) {
+               const sVotes = votes.filter(v => v.type === 'size');
+               const bigVotes = sVotes.filter(v => v.val === 'BIG').length;
+               const smallVotes = sVotes.filter(v => v.val === 'SMALL').length;
+               const maxVotes = Math.max(bigVotes, smallVotes);
+               if (maxVotes >= minConsensus) {
+                 type = 'SIZE';
+                 target = bigVotes >= smallVotes ? 'BIG' : 'SMALL';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
+        } else if (task.config.autoTarget === 'DYNAMIC_CYCLE') {
+           // v5.3: 动态周期 - 自动识别最强周期模式并预测
+           if (ruleBlocks.length >= 10) {
+             const maxCycleLen = task.config.cycleMaxLength || 8;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             const detectCycle = (values: string[], maxLen: number): { period: number; nextVal: string; strength: number } | null => {
+               let bestPeriod = 0;
+               let bestStrength = 0;
+               let bestNextVal = '';
+
+               for (let p = 2; p <= Math.min(maxLen, Math.floor(values.length / 3)); p++) {
+                 // 检查周期p的匹配度
+                 let matches = 0;
+                 let total = 0;
+                 for (let i = p; i < values.length; i++) {
+                   if (values[i] === values[i % p]) matches++;
+                   total++;
+                 }
+                 const strength = total > 0 ? matches / total : 0;
+                 if (strength > bestStrength && strength >= 0.6) {
+                   bestStrength = strength;
+                   bestPeriod = p;
+                   // 预测下一个值：当前位置在周期中的位置
+                   bestNextVal = values[values.length % p];
+                 }
+               }
+               if (bestPeriod > 0) return { period: bestPeriod, nextVal: bestNextVal, strength: bestStrength };
+               return null;
+             };
+
+             if (hasParity) {
+               const pValues = ruleBlocks.slice(0, 60).map(b => b.type).reverse(); // 时间正序
+               const cycle = detectCycle(pValues, maxCycleLen);
+               if (cycle && cycle.strength >= 0.6) {
+                 type = 'PARITY';
+                 target = cycle.nextVal as BetTarget;
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const sValues = ruleBlocks.slice(0, 60).map(b => b.sizeType).reverse();
+               const cycle = detectCycle(sValues, maxCycleLen);
+               if (cycle && cycle.strength >= 0.6) {
+                 type = 'SIZE';
+                 target = cycle.nextVal as BetTarget;
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
         } else if (ruleBlocks.length > 0) {
            // FOLLOW_LAST / REVERSE_LAST
            const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
@@ -2694,6 +2780,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_REVERSE'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙反势</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'OSCILLATION_REVERSE', oscillationCount: draftConfig.oscillationCount || 3})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'OSCILLATION_REVERSE' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-400 border-gray-200'}`}>振荡反转</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'PATTERN_MATCH', patternLength: draftConfig.patternLength || 4, patternMinMatch: draftConfig.patternMinMatch || 3})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'PATTERN_MATCH' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white text-gray-400 border-gray-200'}`}>模式匹配</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'STREAK_BREAK_REVERSE', streakBreakCount: draftConfig.streakBreakCount || 4})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>确认反转</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MULTI_MODEL_CONSENSUS', consensusMinModels: draftConfig.consensusMinModels || 5})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>模型共识</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DYNAMIC_CYCLE', cycleMaxLength: draftConfig.cycleMaxLength || 8})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DYNAMIC_CYCLE' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>动态周期</button>
                       </div>
                    </div>
 
@@ -2821,6 +2910,54 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
+                   {/* v5.3: 确认反转参数 */}
+                   {draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' && (
+                      <div className="bg-rose-50/50 p-3 rounded-xl border border-rose-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-rose-600 uppercase block">确认反转参数</span>
+                         <div className="grid grid-cols-1 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">连续N次后等待反转确认</label>
+                             <input type="number" min="2" max="15" step="1" value={draftConfig.streakBreakCount || 4} onChange={e => setDraftConfig({...draftConfig, streakBreakCount: Math.min(15, Math.max(2, parseInt(e.target.value) || 2))})} placeholder="4" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-rose-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-rose-600 font-semibold">
+                           连续{draftConfig.streakBreakCount || 4}次相同结果后，等待下一期出现反转确认，再跟随反转方向下注
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.3: 多模型共识参数 */}
+                   {draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' && (
+                      <div className="bg-violet-50/50 p-3 rounded-xl border border-violet-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-violet-600 uppercase block">多模型共识参数</span>
+                         <div className="grid grid-cols-1 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">最少共识模型数</label>
+                             <input type="number" min="2" max="16" step="1" value={draftConfig.consensusMinModels || 5} onChange={e => setDraftConfig({...draftConfig, consensusMinModels: Math.min(16, Math.max(2, parseInt(e.target.value) || 2))})} placeholder="5" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-violet-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-violet-600 font-semibold">
+                           运行全部16个AI模型，至少{draftConfig.consensusMinModels || 5}个模型预测相同方向时才下注
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.3: 动态周期参数 */}
+                   {draftConfig.autoTarget === 'DYNAMIC_CYCLE' && (
+                      <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-emerald-600 uppercase block">动态周期参数</span>
+                         <div className="grid grid-cols-1 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">最大周期长度</label>
+                             <input type="number" min="2" max="20" step="1" value={draftConfig.cycleMaxLength || 8} onChange={e => setDraftConfig({...draftConfig, cycleMaxLength: Math.min(20, Math.max(2, parseInt(e.target.value) || 2))})} placeholder="8" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-emerald-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-emerald-600 font-semibold">
+                           自动检测2~{draftConfig.cycleMaxLength || 8}长度的周期模式，匹配度≥60%时根据周期位置预测下期
+                         </p>
+                      </div>
+                   )}
+
                    {/* v5.1: 规则多选 (用于 RULE_TREND_DRAGON, RULE_BEAD_DRAGON) */}
                    {(draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON') && (
                       <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50 space-y-2">
@@ -2854,7 +2991,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    )}
 
                    {/* 模式参数 */}
-                   {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_MODEL_SELECT' || draftConfig.autoTarget === 'AI_WINRATE_TRIGGER' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON' || draftConfig.autoTarget === 'OSCILLATION_REVERSE' || draftConfig.autoTarget === 'PATTERN_MATCH') && (
+                   {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_MODEL_SELECT' || draftConfig.autoTarget === 'AI_WINRATE_TRIGGER' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON' || draftConfig.autoTarget === 'OSCILLATION_REVERSE' || draftConfig.autoTarget === 'PATTERN_MATCH' || draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' || draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' || draftConfig.autoTarget === 'DYNAMIC_CYCLE') && (
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-2">
                           {(draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE') && (
                              <div className="flex items-center justify-between">
@@ -3211,6 +3348,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         if (t.config.autoTarget === 'AI_PREDICTION') return { text: 'AI 单规托管', color: 'bg-purple-100 text-purple-600' };
                         if (t.config.autoTarget === 'OSCILLATION_REVERSE') return { text: `振荡反转(${t.config.oscillationCount || 3}连)`, color: 'bg-sky-100 text-sky-600' };
                         if (t.config.autoTarget === 'PATTERN_MATCH') return { text: `模式匹配(${t.config.patternLength || 4}期)`, color: 'bg-fuchsia-100 text-fuchsia-600' };
+                        if (t.config.autoTarget === 'STREAK_BREAK_REVERSE') return { text: `确认反转(${t.config.streakBreakCount || 4}连)`, color: 'bg-rose-100 text-rose-600' };
+                        if (t.config.autoTarget === 'MULTI_MODEL_CONSENSUS') return { text: `模型共识(≥${t.config.consensusMinModels || 5})`, color: 'bg-violet-100 text-violet-600' };
+                        if (t.config.autoTarget === 'DYNAMIC_CYCLE') return { text: `动态周期(≤${t.config.cycleMaxLength || 8})`, color: 'bg-emerald-100 text-emerald-600' };
 
                         const ruleLabel = r?.label || '未知规则';
                         const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
