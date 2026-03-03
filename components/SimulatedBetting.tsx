@@ -1084,10 +1084,22 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     return true;
   }, [bets, config.odds]);
 
+  // 生成不重复的托管任务名：找当前任务列表中最小的未用编号
+  const getNextTaskName = (existingTasks: AutoTask[]) => {
+    const usedNums = new Set(
+      existingTasks
+        .map(t => { const m = t.name.match(/^托管任务\s*(\d+)$/); return m ? parseInt(m[1]) : -1; })
+        .filter(n => n > 0)
+    );
+    let n = 1;
+    while (usedNums.has(n)) n++;
+    return `托管任务 ${n}`;
+  };
+
   const createTask = () => {
     const newTask: AutoTask = {
       id: Date.now().toString(),
-      name: draftName || `托管任务 ${tasks.length + 1}`,
+      name: draftName.trim() || getNextTaskName(tasks),
       createTime: Date.now(),
       ruleId: draftRuleId,
       config: { ...draftConfig },
@@ -1124,9 +1136,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         maxDrawdown: 0
       }
     };
-    setTasks(prev => [...prev, newTask]);
-    // Reset draft name
-    setDraftName(`托管任务 ${tasks.length + 2}`);
+    const nextTasks = [...tasks, newTask];
+    setTasks(nextTasks);
+    // 重置草稿名：使用新列表计算下一个未使用编号，避免重复
+    setDraftName(getNextTaskName(nextTasks));
   };
 
   const toggleTask = (taskId: string) => {
@@ -3583,17 +3596,34 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
                      const badge = getTaskBadgeContent(task, rule);
 
+                     // 配置参数展示辅助
+                     const tlMap: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
+                     const tsArr2 = task.config.targetSelections || [];
+                     const targetSelectStr = tsArr2.length >= 4 ? '全部' : tsArr2.map(x => tlMap[x] || x).join(' · ');
+                     const atShort: Record<string, string> = {
+                       'FIXED':'定投','RANDOM':'随机','FOLLOW_LAST':'顺跟','REVERSE_LAST':'反砍',
+                       'AI_PREDICTION':'AI单规','GLOBAL_AI_FULL_SCAN':'AI全域','GLOBAL_TREND_DRAGON':'全域走势龙',
+                       'GLOBAL_BEAD_DRAGON':'全域珠盘龙','FOLLOW_RECENT_TREND':'近期顺势',
+                       'FOLLOW_RECENT_TREND_REVERSE':'近期反势','DRAGON_FOLLOW':'走势龙顺',
+                       'DRAGON_REVERSE':'走势龙反','AI_MODEL_SELECT':'模型精选',
+                       'AI_WINRATE_TRIGGER':'胜率触发','BEAD_DRAGON_FOLLOW':'珠盘龙顺',
+                       'BEAD_DRAGON_REVERSE':'珠盘龙反','RULE_TREND_DRAGON':'规则走势龙',
+                       'RULE_BEAD_DRAGON':'规则珠盘龙','OSCILLATION_REVERSE':'振荡反转',
+                       'PATTERN_MATCH':'模式匹配','STREAK_BREAK_REVERSE':'确认反转',
+                       'MULTI_MODEL_CONSENSUS':'多模型共识','DYNAMIC_CYCLE':'动态周期',
+                       'MEAN_REVERSION':'均值回归','HOT_COLD_SWITCH':'冷热跟随',
+                       'ALTERNATING_FOLLOW':'交替跳选',
+                     };
+                     const autoTargetShortLabel = atShort[task.config.autoTarget] || task.config.autoTarget;
+
                      return (
-                       <div key={task.id} className={`rounded-2xl p-5 border-2 transition-all relative overflow-hidden ${task.isActive ? 'bg-white border-indigo-500 shadow-md' : 'bg-gray-50 border-gray-200 grayscale-[0.5]'}`}>
-                          <div className="flex justify-between items-start mb-3">
-                             <div>
-                                <h4 className="font-black text-sm text-gray-900 truncate max-w-[150px]">{task.name}</h4>
-                                <div className="flex items-center space-x-2 mt-1 flex-wrap gap-y-1">
-                                   <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${badge.color}`}>
-                                      {badge.text}
-                                   </span>
-                                   <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded font-bold">{STRATEGY_LABELS[task.config.type]}</span>
-                                   <span className={`text-[10px] px-2 py-0.5 rounded font-black ${task.betMode === 'REAL' ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-blue-50 text-blue-500'}`}>
+                       <div key={task.id} className={`rounded-2xl p-4 border-2 transition-all relative overflow-hidden ${task.isActive ? 'bg-white border-indigo-500 shadow-md' : 'bg-gray-50 border-gray-200 grayscale-[0.5]'}`}>
+                          {/* 任务头：名称 + 开关 */}
+                          <div className="flex justify-between items-start mb-2">
+                             <div className="min-w-0 flex-1 mr-2">
+                                <h4 className="font-black text-sm text-gray-900 truncate">{task.name}</h4>
+                                <div className="flex items-center flex-wrap gap-1 mt-1">
+                                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${task.betMode === 'REAL' ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-blue-50 text-blue-500'}`}>
                                       {task.betMode === 'REAL' ? '真实' : '模拟'}
                                    </span>
                                    {task.blockRangeEnabled && task.blockStart && task.blockEnd && (
@@ -3613,9 +3643,43 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                                    )}
                                 </div>
                              </div>
-                             <button onClick={() => toggleTask(task.id)} className={`p-2 rounded-full transition-colors ${task.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}>
+                             <button onClick={() => toggleTask(task.id)} className={`p-2 rounded-full transition-colors flex-shrink-0 ${task.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}>
                                 {task.isActive ? <PauseCircle className="w-6 h-6" /> : <PlayCircle className="w-6 h-6" />}
                              </button>
+                          </div>
+
+                          {/* 配置参数面板 */}
+                          <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50/30 divide-y divide-indigo-100/60">
+                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">下注规则</span>
+                                <span className="text-[10px] font-bold text-gray-800 truncate block">{rule?.label || '未知规则'}</span>
+                              </div>
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">资金策略</span>
+                                <span className="text-[10px] font-bold text-purple-700 block">{STRATEGY_LABELS[task.config.type]}</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">自动目标</span>
+                                <span className="text-[10px] font-bold text-indigo-700 block">{autoTargetShortLabel}</span>
+                              </div>
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">目标选择</span>
+                                <span className="text-[10px] font-bold text-gray-800 block">{targetSelectStr || '—'}</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">下注模式</span>
+                                <span className={`text-[10px] font-bold block ${task.betMode === 'REAL' ? 'text-red-600' : 'text-blue-600'}`}>{task.betMode === 'REAL' ? '真实下注' : '模拟下注'}</span>
+                              </div>
+                              <div className="px-2.5 py-1.5">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">基础注额</span>
+                                <span className="text-[10px] font-bold text-gray-800 block">¥{task.baseBet}</span>
+                              </div>
+                            </div>
                           </div>
                           
                           <div className="grid grid-cols-3 gap-2 mb-2 bg-gray-50/50 p-2 rounded-xl">
