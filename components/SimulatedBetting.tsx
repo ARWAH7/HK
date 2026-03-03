@@ -34,7 +34,7 @@ interface SimulatedBettingProps {
   rules: IntervalRule[];
 }
 
-const FRONTEND_VERSION = 'v5.1';
+const FRONTEND_VERSION = 'v5.4';
 
 // ---------------------- TYPES ----------------------
 
@@ -56,6 +56,10 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   | 'STREAK_BREAK_REVERSE'  // 确认反转：连续N次+反转确认后跟随反转方向
   | 'MULTI_MODEL_CONSENSUS' // 多模型共识：至少M个模型一致时才下注
   | 'DYNAMIC_CYCLE'         // 动态周期：自动识别最强周期模式预测
+  // v5.4 新增
+  | 'MEAN_REVERSION'        // 均值回归：Z分数超阈值时反向下注
+  | 'HOT_COLD_SWITCH'       // 冷热跟随：顺势跟随近期热门方向
+  | 'ALTERNATING_FOLLOW'    // 交替跳选：检测交替模式预测下期
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -140,6 +144,15 @@ interface StrategyConfig {
   consensusMinModels?: number;  // 最少共识模型数 (默认5)
   // v5.3: 动态周期参数
   cycleMaxLength?: number;      // 最大检测周期长度 (默认8)
+  // v5.4: 均值回归参数
+  meanReversionWindow?: number; // 统计窗口 (默认30)
+  zScoreThreshold?: number;     // Z分数触发阈值 (默认2.0)
+  // v5.4: 冷热跟随参数
+  hotColdWindow?: number;       // 观察窗口 (默认20)
+  hotThreshold?: number;        // 热门判定阈值 % (默认65)
+  // v5.4: 交替跳选参数
+  altPatternLength?: number;    // 最小交替序列长度 (默认6)
+  altReverseMode?: boolean;     // 是否反向跟随 (默认false)
 }
 
 interface StrategyState {
@@ -996,6 +1009,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     if (task.config.autoTarget === 'STREAK_BREAK_REVERSE') return { text: `确认反转(${task.config.streakBreakCount || 4}连)`, color: 'bg-rose-100 text-rose-600' };
     if (task.config.autoTarget === 'MULTI_MODEL_CONSENSUS') return { text: `模型共识(≥${task.config.consensusMinModels || 5})`, color: 'bg-violet-100 text-violet-600' };
     if (task.config.autoTarget === 'DYNAMIC_CYCLE') return { text: `动态周期(≤${task.config.cycleMaxLength || 8})`, color: 'bg-emerald-100 text-emerald-600' };
+    if (task.config.autoTarget === 'MEAN_REVERSION') return { text: `均值回归(Z≥${task.config.zScoreThreshold || 2.0})`, color: 'bg-cyan-100 text-cyan-700' };
+    if (task.config.autoTarget === 'HOT_COLD_SWITCH') return { text: `冷热跟随(≥${task.config.hotThreshold || 65}%)`, color: 'bg-orange-100 text-orange-600' };
+    if (task.config.autoTarget === 'ALTERNATING_FOLLOW') return { text: `交替跳选(${task.config.altPatternLength || 6}期${task.config.altReverseMode ? '反' : '顺'})`, color: 'bg-lime-100 text-lime-700' };
 
     const ruleLabel = rule?.label || '未知规则';
     const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
@@ -2278,6 +2294,122 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                }
              }
            }
+        } else if (task.config.autoTarget === 'MEAN_REVERSION') {
+           // v5.4: 均值回归 - Z分数超过阈值时反向下注
+           if (ruleBlocks.length >= 20) {
+             const window = task.config.meanReversionWindow || 30;
+             const zThreshold = task.config.zScoreThreshold || 2.0;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             const calcZScore = (values: string[], label: string): number => {
+               const n = Math.min(values.length, window);
+               const slice = values.slice(0, n);
+               const count = slice.filter(v => v === label).length;
+               const p = count / n;
+               const expected = 0.5;
+               const stdDev = Math.sqrt(expected * (1 - expected) / n);
+               return stdDev > 0 ? (p - expected) / stdDev : 0;
+             };
+
+             if (hasParity) {
+               const zOdd = calcZScore(ruleBlocks.map(b => b.type), 'ODD');
+               if (Math.abs(zOdd) >= zThreshold) {
+                 type = 'PARITY';
+                 // Z>0表示ODD偏多，均值回归预测EVEN；Z<0表示EVEN偏多，均值回归预测ODD
+                 target = zOdd > 0 ? 'EVEN' : 'ODD';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const zBig = calcZScore(ruleBlocks.map(b => b.sizeType), 'BIG');
+               if (Math.abs(zBig) >= zThreshold) {
+                 type = 'SIZE';
+                 target = zBig > 0 ? 'SMALL' : 'BIG';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
+        } else if (task.config.autoTarget === 'HOT_COLD_SWITCH') {
+           // v5.4: 冷热跟随 - 近N期出现频率超过阈值的方向为热门，顺势跟随
+           if (ruleBlocks.length >= 10) {
+             const window = task.config.hotColdWindow || 20;
+             const threshold = (task.config.hotThreshold || 65) / 100;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             if (hasParity) {
+               const slice = ruleBlocks.slice(0, Math.min(ruleBlocks.length, window));
+               const oddRate = slice.filter(b => b.type === 'ODD').length / slice.length;
+               const evenRate = 1 - oddRate;
+               if (oddRate >= threshold) {
+                 type = 'PARITY'; target = 'ODD';
+                 if (ts.includes(target)) shouldBet = true;
+               } else if (evenRate >= threshold) {
+                 type = 'PARITY'; target = 'EVEN';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const slice = ruleBlocks.slice(0, Math.min(ruleBlocks.length, window));
+               const bigRate = slice.filter(b => b.sizeType === 'BIG').length / slice.length;
+               const smallRate = 1 - bigRate;
+               if (bigRate >= threshold) {
+                 type = 'SIZE'; target = 'BIG';
+                 if (ts.includes(target)) shouldBet = true;
+               } else if (smallRate >= threshold) {
+                 type = 'SIZE'; target = 'SMALL';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
+        } else if (task.config.autoTarget === 'ALTERNATING_FOLLOW') {
+           // v5.4: 交替跳选 - 检测ABAB交替模式，预测下一个
+           if (ruleBlocks.length >= 6) {
+             const minLen = task.config.altPatternLength || 6;
+             const reverseMode = task.config.altReverseMode || false;
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             const detectAlternating = (values: string[]): { isAlt: boolean; nextVal: string } => {
+               const checkLen = Math.min(values.length, minLen + 4);
+               const recent = values.slice(0, checkLen).reverse(); // 时间正序
+               let altCount = 0;
+               for (let i = 1; i < recent.length; i++) {
+                 if (recent[i] !== recent[i - 1]) altCount++;
+               }
+               const altRate = altCount / (recent.length - 1);
+               if (altRate >= 0.8) {
+                 // 强交替：预测与最新值不同的值
+                 const nextVal = values[0] === values[0] ? (values[0] === values[1] ? values[0] : values[1]) : values[0];
+                 // 严格：下一个应与最后一个不同
+                 const lastVal = values[0];
+                 const altOptions = Array.from(new Set(values.slice(0, checkLen)));
+                 const predicted = altOptions.find(v => v !== lastVal) || lastVal;
+                 return { isAlt: true, nextVal: reverseMode ? lastVal : predicted };
+               }
+               return { isAlt: false, nextVal: '' };
+             };
+
+             if (hasParity) {
+               const pVals = ruleBlocks.slice(0, minLen + 4).map(b => b.type);
+               const result = detectAlternating(pVals);
+               if (result.isAlt && (result.nextVal === 'ODD' || result.nextVal === 'EVEN')) {
+                 type = 'PARITY';
+                 target = result.nextVal as BetTarget;
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const sVals = ruleBlocks.slice(0, minLen + 4).map(b => b.sizeType);
+               const result = detectAlternating(sVals);
+               if (result.isAlt && (result.nextVal === 'BIG' || result.nextVal === 'SMALL')) {
+                 type = 'SIZE';
+                 target = result.nextVal as BetTarget;
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
         } else if (ruleBlocks.length > 0) {
            // FOLLOW_LAST / REVERSE_LAST
            const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
@@ -2783,6 +2915,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'STREAK_BREAK_REVERSE', streakBreakCount: draftConfig.streakBreakCount || 4})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>确认反转</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MULTI_MODEL_CONSENSUS', consensusMinModels: draftConfig.consensusMinModels || 5})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>模型共识</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DYNAMIC_CYCLE', cycleMaxLength: draftConfig.cycleMaxLength || 8})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DYNAMIC_CYCLE' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>动态周期</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MEAN_REVERSION', meanReversionWindow: draftConfig.meanReversionWindow || 30, zScoreThreshold: draftConfig.zScoreThreshold || 2.0})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MEAN_REVERSION' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>均值回归</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'HOT_COLD_SWITCH', hotColdWindow: draftConfig.hotColdWindow || 20, hotThreshold: draftConfig.hotThreshold || 65})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'HOT_COLD_SWITCH' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>冷热跟随</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
                       </div>
                    </div>
 
@@ -2954,6 +3089,68 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          </div>
                          <p className="text-[9px] text-emerald-600 font-semibold">
                            自动检测2~{draftConfig.cycleMaxLength || 8}长度的周期模式，匹配度≥60%时根据周期位置预测下期
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.4: 均值回归参数 */}
+                   {draftConfig.autoTarget === 'MEAN_REVERSION' && (
+                      <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-cyan-700 uppercase block">均值回归参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">统计窗口期数</label>
+                             <input type="number" min="10" max="100" step="1" value={draftConfig.meanReversionWindow || 30} onChange={e => setDraftConfig({...draftConfig, meanReversionWindow: Math.min(100, Math.max(10, parseInt(e.target.value) || 10))})} placeholder="30" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">Z分数阈值</label>
+                             <input type="number" min="1.0" max="4.0" step="0.1" value={draftConfig.zScoreThreshold || 2.0} onChange={e => setDraftConfig({...draftConfig, zScoreThreshold: Math.min(4.0, Math.max(1.0, parseFloat(e.target.value) || 1.0))})} placeholder="2.0" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-cyan-700 font-semibold">
+                           近{draftConfig.meanReversionWindow || 30}期内某方向Z分数≥{draftConfig.zScoreThreshold || 2.0}时，反向下注等待均值回归
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.4: 冷热跟随参数 */}
+                   {draftConfig.autoTarget === 'HOT_COLD_SWITCH' && (
+                      <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-orange-600 uppercase block">冷热跟随参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">观察窗口期数</label>
+                             <input type="number" min="5" max="50" step="1" value={draftConfig.hotColdWindow || 20} onChange={e => setDraftConfig({...draftConfig, hotColdWindow: Math.min(50, Math.max(5, parseInt(e.target.value) || 5))})} placeholder="20" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-orange-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">热门阈值 %</label>
+                             <input type="number" min="55" max="90" step="1" value={draftConfig.hotThreshold || 65} onChange={e => setDraftConfig({...draftConfig, hotThreshold: Math.min(90, Math.max(55, parseInt(e.target.value) || 55))})} placeholder="65" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-orange-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-orange-600 font-semibold">
+                           近{draftConfig.hotColdWindow || 20}期内某方向出现频率≥{draftConfig.hotThreshold || 65}%时，顺势跟随热门方向
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.4: 交替跳选参数 */}
+                   {draftConfig.autoTarget === 'ALTERNATING_FOLLOW' && (
+                      <div className="bg-lime-50/50 p-3 rounded-xl border border-lime-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-lime-700 uppercase block">交替跳选参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">最小交替序列长度</label>
+                             <input type="number" min="4" max="20" step="1" value={draftConfig.altPatternLength || 6} onChange={e => setDraftConfig({...draftConfig, altPatternLength: Math.min(20, Math.max(4, parseInt(e.target.value) || 4))})} placeholder="6" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-lime-200 outline-none text-center" />
+                           </div>
+                           <div className="flex items-center justify-center">
+                             <label className="flex items-center gap-2 cursor-pointer">
+                               <input type="checkbox" checked={!!draftConfig.altReverseMode} onChange={e => setDraftConfig({...draftConfig, altReverseMode: e.target.checked})} className="w-4 h-4 accent-lime-600" />
+                               <span className="text-[9px] font-bold text-lime-700">反向跟随</span>
+                             </label>
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-lime-700 font-semibold">
+                           检测近期ABAB交替模式(≥{draftConfig.altPatternLength || 6}期/80%交替率)，{draftConfig.altReverseMode ? '反向下注' : '顺势预测下期'}
                          </p>
                       </div>
                    )}
@@ -3351,6 +3548,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         if (t.config.autoTarget === 'STREAK_BREAK_REVERSE') return { text: `确认反转(${t.config.streakBreakCount || 4}连)`, color: 'bg-rose-100 text-rose-600' };
                         if (t.config.autoTarget === 'MULTI_MODEL_CONSENSUS') return { text: `模型共识(≥${t.config.consensusMinModels || 5})`, color: 'bg-violet-100 text-violet-600' };
                         if (t.config.autoTarget === 'DYNAMIC_CYCLE') return { text: `动态周期(≤${t.config.cycleMaxLength || 8})`, color: 'bg-emerald-100 text-emerald-600' };
+                        if (t.config.autoTarget === 'MEAN_REVERSION') return { text: `均值回归(Z≥${t.config.zScoreThreshold || 2.0})`, color: 'bg-cyan-100 text-cyan-700' };
+                        if (t.config.autoTarget === 'HOT_COLD_SWITCH') return { text: `冷热跟随(≥${t.config.hotThreshold || 65}%)`, color: 'bg-orange-100 text-orange-600' };
+                        if (t.config.autoTarget === 'ALTERNATING_FOLLOW') return { text: `交替跳选(${t.config.altPatternLength || 6}期${t.config.altReverseMode ? '反' : '顺'})`, color: 'bg-lime-100 text-lime-700' };
 
                         const ruleLabel = r?.label || '未知规则';
                         const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };

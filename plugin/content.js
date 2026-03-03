@@ -88,12 +88,12 @@
     // ==================== 配置常量 ====================
     let API_URL = 'http://localhost:3001';
     let WS_URL = 'ws://localhost:8080';
-    const STEP_DELAY = 30;           // 步骤间延迟 (极速: 30ms)
-    const POST_CONFIRM_DELAY = 150;  // 确认按钮后等待 (150ms, 够UI重置)
+    const STEP_DELAY = 20;           // 步骤间延迟 (极速: 20ms)
+    const POST_CONFIRM_DELAY = 80;   // 确认按钮后等待 (80ms, 够UI重置)
     const MAX_RETRIES = 3;           // 单笔下注失败最大重试次数
-    const RETRY_WAIT = 200;          // 重试前等待 (200ms, 等UI恢复)
-    const UI_READY_TIMEOUT = 1500;   // 等待UI就绪最大时间
-    const UI_READY_POLL = 30;        // UI就绪检测轮询间隔 (30ms)
+    const RETRY_WAIT = 100;          // 重试前等待 (100ms, 等UI恢复)
+    const UI_READY_TIMEOUT = 800;    // 等待UI就绪最大时间 (800ms)
+    const UI_READY_POLL = 15;        // UI就绪检测轮询间隔 (15ms)
 
     const TARGET_TEXT = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
 
@@ -276,13 +276,19 @@
       },
 
       // 等待游戏UI就绪 (输入框 + 确认按钮可用)
+      // v5.1优化: 先做立即检测，减少不必要的轮询等待
       async _waitForUIReady() {
+        // 立即检测：若UI已就绪直接返回（省去任何等待）
+        const inputNow = this.findAmountInput();
+        const confirmNow = this.findConfirmButton();
+        if (inputNow && confirmNow) return true;
+
         const start = Date.now();
         while (Date.now() - start < UI_READY_TIMEOUT) {
+          await delay(UI_READY_POLL);
           const input = this.findAmountInput();
           const confirm = this.findConfirmButton();
           if (input && confirm) return true;
-          await delay(UI_READY_POLL);
         }
         return false;
       },

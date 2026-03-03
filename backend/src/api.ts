@@ -209,7 +209,7 @@ export function createAPI(port: number = 3001) {
     try {
       const modelId = req.query.modelId as string | undefined;
       const ruleId = req.query.ruleId as string | undefined;
-      const limit = parseInt(req.query.limit as string) || 100;
+      const limit = parseInt(req.query.limit as string) || 50000;
       
       const predictions = await getAIPredictions(modelId, ruleId, limit);
       

@@ -175,6 +175,24 @@ const AI_MODELS_DOCS = [
 // 全局自增ID计数器，确保每个预测ID唯一
 let idCounter = 0;
 
+// 从历史记录重建模型统计（确保总场次与演算历史数据一致）
+function recalcModelStatsFromHistory(
+  historyRecords: (PredictionHistoryItem & { ruleId: string })[]
+): Record<string, { total: number; correct: number }> {
+  const stats: Record<string, { total: number; correct: number }> = {};
+  historyRecords.filter(h => h.resolved).forEach(item => {
+    const models = (item as any).contributingModels && (item as any).contributingModels.length > 0
+      ? (item as any).contributingModels as string[]
+      : (item.detectedCycle ? [item.detectedCycle] : []);
+    models.forEach(model => {
+      if (!stats[model]) stats[model] = { total: 0, correct: 0 };
+      stats[model].total++;
+      if (item.isParityCorrect || item.isSizeCorrect) stats[model].correct++;
+    });
+  });
+  return stats;
+}
+
 // ✅ 优化：自定义比较函数，基于内容指纹而非引用比较，避免 allBlocks 引用变化触发不必要的重渲染
 const arePropsEqual = (prev: AIPredictionProps, next: AIPredictionProps) => {
   // rules 引用比较（通常不会频繁变化）
@@ -528,20 +546,26 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
       try {
         setIsLoading(true);
         setError(null);
-        // 获取历史预测数据
-        const historyResponse = await fetch('http://localhost:3001/api/ai/predictions?limit=10000');
+        // 获取历史预测数据（使用大limit确保拉取全量数据）
+        const historyResponse = await fetch('http://localhost:3001/api/ai/predictions?limit=50000');
         const historyResult = await historyResponse.json();
         if (historyResult.success && historyResult.data) {
-          console.log('[数据加载] 成功从后端API获取', historyResult.data.length, '条历史预测数据');
-          setHistory(historyResult.data);
-        }
+          const loadedHistory = historyResult.data;
+          console.log('[数据加载] 成功从后端API获取', loadedHistory.length, '条历史预测数据');
+          setHistory(loadedHistory);
 
-        // 获取模型统计数据
-        const statsResponse = await fetch('http://localhost:3001/api/ai/model-stats');
-        const statsResult = await statsResponse.json();
-        if (statsResult.success && statsResult.data) {
-          console.log('[数据加载] 成功从后端API获取模型统计数据');
-          setModelStats(statsResult.data);
+          // 从历史数据重建模型统计，确保总场次与演算历史一致
+          const rebuiltStats = recalcModelStatsFromHistory(loadedHistory);
+          if (Object.keys(rebuiltStats).length > 0) {
+            console.log('[数据加载] 从历史数据重建模型统计，确保数据一致');
+            setModelStats(rebuiltStats);
+            // 同步重建后的统计到后端
+            fetch('http://localhost:3001/api/ai/model-stats', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(rebuiltStats)
+            }).catch(e => console.warn('[数据加载] 同步模型统计到后端失败:', e));
+          }
         }
       } catch (error) {
         console.error('[数据加载] 从后端API获取数据失败:', error);
@@ -1058,9 +1082,12 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
 
         {/* 总体统计卡片 */}
         {modelPerformance.length > 0 && (() => {
-          const totalPredictions = modelPerformance.reduce((sum, m) => sum + m.total, 0);
-          const totalCorrect = modelPerformance.reduce((sum, m) => sum + m.correct, 0);
-          const overallAccuracy = totalPredictions > 0 ? Math.round((totalCorrect / totalPredictions) * 100) : 0;
+          // 总场次 = 演算历史记录数，与演算历史保持一致
+          const totalPredictions = history.length;
+          // 成功场次 = 已验证且预测正确的记录数
+          const resolvedHistory = history.filter(h => h.resolved);
+          const totalCorrect = resolvedHistory.filter(h => h.isParityCorrect || h.isSizeCorrect).length;
+          const overallAccuracy = resolvedHistory.length > 0 ? Math.round((totalCorrect / resolvedHistory.length) * 100) : 0;
           const activeModels = modelPerformance.filter(m => m.total > 0).length;
           const bestModel = modelPerformance[0];
           const avgAccuracy = modelPerformance.length > 0 
@@ -1086,7 +1113,7 @@ const AIPrediction: React.FC<AIPredictionProps> = memo(({ allBlocks, rules }) =>
                   <span className="text-xs font-black text-emerald-600 uppercase tracking-wider">成功</span>
                 </div>
                 <p className="text-3xl font-black text-emerald-900">{totalCorrect}</p>
-                <p className="text-xs text-emerald-600 mt-1">{totalPredictions - totalCorrect} 次失败</p>
+                <p className="text-xs text-emerald-600 mt-1">{resolvedHistory.length - totalCorrect} 次失败</p>
               </div>
 
               {/* 总胜率 */}
