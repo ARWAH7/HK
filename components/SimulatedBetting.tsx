@@ -2753,11 +2753,11 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
               {showConfig && (
                 <div className="animate-in slide-in-from-top-2 space-y-3">
-                  {/* ── 两列主体 ── */}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  {/* ── 三列主体 ── */}
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
 
-                    {/* ═══ LEFT COLUMN (2/5) ═══ */}
-                    <div className="md:col-span-2 space-y-3">
+                    {/* ═══ LEFT COLUMN (2/7) ═══ */}
+                    <div className="md:col-span-2 space-y-2">
 
                    {/* Task Name */}
                    <div>
@@ -2874,9 +2874,74 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
+                      {/* 基础注额 */}
+                      <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">基础注额 (每单)</label>
+                        <input type="number" value={config.baseBet} onChange={(e) => setConfig({...config, baseBet: parseFloat(e.target.value)})} className="w-full text-right bg-gray-50 px-2 py-1.5 rounded-xl text-xs font-black border border-transparent focus:border-indigo-300 outline-none" />
+                      </div>
+                      {/* 下注模式 */}
+                      <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">下注模式</label>
+                        <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden h-[30px]">
+                          <button onClick={() => setDraftBetMode('SIMULATED')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'SIMULATED' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-gray-600'}`}>模拟</button>
+                          <button onClick={() => setDraftBetMode('REAL')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'REAL' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-gray-600'}`}>真实</button>
+                        </div>
+                        {draftBetMode === 'REAL' && (
+                          <div className={`mt-1 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
+                            {pluginReady ? <>已连接{realBalance != null && <span className="ml-1 text-green-700">¥{realBalance.toFixed(2)}</span>}</> : '插件未连接'}
+                          </div>
+                        )}
+                      </div>
+                      {/* 区块范围 */}
+                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-600 flex items-center"><Layers className="w-3 h-3 mr-1" />区块范围</span>
+                          <button onClick={() => setDraftBlockRangeEnabled(!draftBlockRangeEnabled)} className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftBlockRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform duration-200 ${draftBlockRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        {draftBlockRangeEnabled && (
+                          <div className="mt-1.5 grid grid-cols-2 gap-1">
+                            <input type="number" value={draftBlockStart || ''} onChange={e => setDraftBlockStart(parseInt(e.target.value) || 0)} placeholder="起始" className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-black border border-gray-200 outline-none" />
+                            <input type="number" value={draftBlockEnd || ''} onChange={e => setDraftBlockEnd(parseInt(e.target.value) || 0)} placeholder="结束" className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-black border border-gray-200 outline-none" />
+                          </div>
+                        )}
+                      </div>
+                      {/* 时间范围 */}
+                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-600 flex items-center"><Clock className="w-3 h-3 mr-1" />时间范围</span>
+                          <button onClick={() => setDraftTimeRangeEnabled(!draftTimeRangeEnabled)} className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftTimeRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform duration-200 ${draftTimeRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        {draftTimeRangeEnabled && (
+                          <div className="mt-1.5 space-y-1">
+                            <input type="datetime-local" value={draftTimeStart} onChange={e => setDraftTimeStart(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[9px] font-bold border border-gray-200 outline-none" />
+                            <input type="datetime-local" value={draftTimeEnd} onChange={e => setDraftTimeEnd(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[9px] font-bold border border-gray-200 outline-none" />
+                          </div>
+                        )}
+                      </div>
+                      {/* 每日定时 */}
+                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-600 flex items-center"><RefreshCw className="w-3 h-3 mr-1" />每日定时</span>
+                          <button onClick={() => setDraftDailyScheduleEnabled(!draftDailyScheduleEnabled)} className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftDailyScheduleEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform duration-200 ${draftDailyScheduleEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        {draftDailyScheduleEnabled && (
+                          <div className="mt-1.5 grid grid-cols-2 gap-1">
+                            <input type="time" step="60" value={draftDailyStart} onChange={e => setDraftDailyStart(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-bold border border-gray-200 outline-none appearance-none" />
+                            <input type="time" step="60" value={draftDailyEnd} onChange={e => setDraftDailyEnd(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-bold border border-gray-200 outline-none appearance-none" />
+                          </div>
+                        )}
+                      </div>
+
                     </div>{/* END LEFT */}
 
-                    {/* ═══ RIGHT COLUMN (3/5) ═══ */}
+                    {/* ═══ MIDDLE COLUMN (3/7) ═══ */}
                     <div className="md:col-span-3 space-y-3">
 
                    {/* Auto Target — all 28 strategies in grid-cols-4 */}
@@ -3279,148 +3344,59 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
+                    </div>{/* END MIDDLE */}
+
+                    {/* ═══ RIGHT COLUMN (2/7) — 全局风控参数 ═══ */}
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase block">全局风控参数</label>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">初始本金</label>
+                        <input type="number" value={config.initialBalance} onChange={e => { const val = parseFloat(e.target.value); setConfig({...config, initialBalance: val}); if (!isNaN(val)) { setBalance(val); setGlobalMetrics({ peakBalance: val, maxDrawdown: 0 }); } }} className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-xs font-bold border border-transparent focus:border-indigo-400 outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">赔率</label>
+                        <input type="number" step="0.01" value={config.odds} onChange={e => setConfig({...config, odds: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-xs font-bold border border-transparent focus:border-indigo-400 outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">止盈 (金额)</label>
+                        <input type="number" value={config.takeProfit} onChange={e => setConfig({...config, takeProfit: parseFloat(e.target.value) || 0})} className="w-full bg-green-50 text-green-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">止盈 (%本金)</label>
+                        <input type="number" value={config.takeProfitPercent || 0} onChange={e => setConfig({...config, takeProfitPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-green-50 text-green-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">止损 (金额)</label>
+                        <input type="number" value={config.stopLoss} onChange={e => setConfig({...config, stopLoss: parseFloat(e.target.value) || 0})} className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-gray-400 block mb-0.5">止损 (%本金)</label>
+                        <input type="number" value={config.stopLossPercent || 0} onChange={e => setConfig({...config, stopLossPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                      </div>
                     </div>{/* END RIGHT COLUMN */}
+
                   </div>{/* END GRID */}
 
-                  {/* ── BOTTOM SECTION (全宽) ── */}
-                  <div className="pt-3 border-t border-gray-100">
-                     <div className="grid grid-cols-2 gap-3 mb-3">
-                       <div>
-                         <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">基础注额 (每单)</label>
-                         <input type="number" value={config.baseBet} onChange={(e) => setConfig({...config, baseBet: parseFloat(e.target.value)})} className="w-full text-right bg-gray-50 px-2 py-2 rounded-xl text-xs font-black border border-transparent focus:border-indigo-300 outline-none" />
-                       </div>
-                       <div>
-                         <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">下注模式</label>
-                         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden h-[34px]">
-                           <button onClick={() => setDraftBetMode('SIMULATED')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'SIMULATED' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>模拟</button>
-                           <button onClick={() => setDraftBetMode('REAL')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'REAL' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>真实</button>
-                         </div>
-                       </div>
-                     </div>
-                     {draftBetMode === 'REAL' && (
-                       <div className={`mb-3 p-2.5 rounded-xl text-[11px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
-                         <span className={`w-2 h-2 rounded-full mr-2 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
-                         {pluginReady
-                           ? <>插件已连接 {realBalance != null && <span className="ml-auto text-green-700">余额: ¥{realBalance.toFixed(2)}</span>}</>
-                           : '插件未检测到 — 请确保已安装并刷新游戏页面'
-                         }
-                       </div>
-                     )}
-                     {/* 3 toggle switches side by side */}
-                     <div className="grid grid-cols-3 gap-2 mb-3">
-                       {/* 区块范围 */}
-                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                         <div className="flex items-center justify-between mb-1.5">
-                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><Layers className="w-3 h-3 mr-1" />区块范围</span>
-                           <button onClick={() => setDraftBlockRangeEnabled(!draftBlockRangeEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftBlockRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
-                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftBlockRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                           </button>
-                         </div>
-                         {draftBlockRangeEnabled && (
-                           <div className="space-y-1.5 mt-1">
-                             <input type="number" value={draftBlockStart || ''} onChange={e => setDraftBlockStart(parseInt(e.target.value) || 0)} placeholder="起始区块" className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-black border border-gray-200 outline-none focus:border-indigo-400" />
-                             <input type="number" value={draftBlockEnd || ''} onChange={e => setDraftBlockEnd(parseInt(e.target.value) || 0)} placeholder="结束区块" className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-black border border-gray-200 outline-none focus:border-indigo-400" />
-                             {draftBlockStart > 0 && draftBlockEnd > 0 && <p className="text-[9px] font-semibold text-indigo-500">{draftBlockStart}~{draftBlockEnd} (共{draftBlockEnd-draftBlockStart}个)</p>}
-                           </div>
-                         )}
-                       </div>
-                       {/* 时间范围 */}
-                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                         <div className="flex items-center justify-between mb-1.5">
-                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><Clock className="w-3 h-3 mr-1" />时间范围</span>
-                           <button onClick={() => setDraftTimeRangeEnabled(!draftTimeRangeEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftTimeRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
-                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftTimeRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                           </button>
-                         </div>
-                         {draftTimeRangeEnabled && (
-                           <div className="space-y-1.5 mt-1">
-                             <input type="datetime-local" value={draftTimeStart} onChange={e => setDraftTimeStart(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[9px] font-bold border border-gray-200 outline-none focus:border-indigo-400" />
-                             <input type="datetime-local" value={draftTimeEnd} onChange={e => setDraftTimeEnd(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[9px] font-bold border border-gray-200 outline-none focus:border-indigo-400" />
-                             {draftTimeStart && draftTimeEnd && <p className="text-[9px] font-semibold text-indigo-500">{new Date(draftTimeStart).toLocaleString('zh-CN')} ~ {new Date(draftTimeEnd).toLocaleString('zh-CN')}</p>}
-                           </div>
-                         )}
-                       </div>
-                       {/* 每日定时 */}
-                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                         <div className="flex items-center justify-between mb-1.5">
-                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><RefreshCw className="w-3 h-3 mr-1" />每日定时</span>
-                           <button onClick={() => setDraftDailyScheduleEnabled(!draftDailyScheduleEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftDailyScheduleEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftDailyScheduleEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                           </button>
-                         </div>
-                         {draftDailyScheduleEnabled && (
-                           <div className="space-y-1.5 mt-1">
-                             <input type="time" step="60" value={draftDailyStart} onChange={e => setDraftDailyStart(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none" />
-                             <input type="time" step="60" value={draftDailyEnd} onChange={e => setDraftDailyEnd(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none" />
-                             <p className="text-[9px] font-semibold text-green-600">{(() => { const [sh,sm]=(draftDailyStart||'00:00').split(':').map(Number); const [eh,em]=(draftDailyEnd||'00:00').split(':').map(Number); const cross=(eh*60+em)<=(sh*60+sm); return cross?`${draftDailyStart}~次日${draftDailyEnd}(跨夜)`:`${draftDailyStart}~${draftDailyEnd}`; })()}</p>
-                           </div>
-                         )}
-                       </div>
-                     </div>
-                     <button
-                       onClick={createTask}
-                       className={`w-full py-3.5 text-white rounded-xl font-black text-sm flex items-center justify-center transition-all shadow-lg active:scale-95 ${
-                         draftBetMode === 'REAL'
-                           ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
-                           : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                       }`}
-                     >
-                       <Plus className="w-4 h-4 mr-2" /> {draftBetMode === 'REAL' ? '添加真实下注任务' : '添加托管任务'}
-                     </button>
-                  </div>{/* END BOTTOM */}
+                  {/* ── BOTTOM: 添加 + 重置 ── */}
+                  <div className="flex gap-2 pt-2 border-t border-gray-100">
+                    <button
+                      onClick={createTask}
+                      className={`flex-1 py-3 text-white rounded-xl font-black text-sm flex items-center justify-center transition-all shadow-lg active:scale-95 ${draftBetMode === 'REAL' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
+                    >
+                      <Plus className="w-4 h-4 mr-2" /> {draftBetMode === 'REAL' ? '添加真实下注任务' : '添加托管任务'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetAccount}
+                      className="px-5 py-3 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-xl text-xs font-black flex items-center transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" /> 重置所有任务
+                    </button>
+                  </div>
                 </div>
               )}
            </div>
 
-           {/* Global Config Card */}
-           <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
-              <h3 className="text-xs font-black text-gray-400 uppercase mb-4">全局风控参数</h3>
-              <div className="grid grid-cols-2 gap-3">
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">初始本金</label>
-                     <input 
-                       type="number" 
-                       value={config.initialBalance} 
-                       onChange={e => {
-                         const val = parseFloat(e.target.value);
-                         setConfig({...config, initialBalance: val});
-                         if (!isNaN(val)) {
-                           setBalance(val);
-                           setGlobalMetrics({ peakBalance: val, maxDrawdown: 0 });
-                         }
-                       }} 
-                       className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-xs font-bold border border-transparent focus:border-indigo-500 outline-none" 
-                     />
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">赔率</label>
-                     <input type="number" step="0.01" value={config.odds} onChange={e => setConfig({...config, odds: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-xs font-bold border border-transparent focus:border-indigo-500 outline-none" />
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">止盈 (金额)</label>
-                     <input type="number" value={config.takeProfit} onChange={e => setConfig({...config, takeProfit: parseFloat(e.target.value) || 0})} className="w-full bg-green-50 text-green-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">止损 (金额)</label>
-                     <input type="number" value={config.stopLoss} onChange={e => setConfig({...config, stopLoss: parseFloat(e.target.value) || 0})} className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">止盈 (%本金)</label>
-                     <input type="number" value={config.takeProfitPercent || 0} onChange={e => setConfig({...config, takeProfitPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-green-50 text-green-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-black text-gray-400 uppercase">止损 (%本金)</label>
-                     <input type="number" value={config.stopLossPercent || 0} onChange={e => setConfig({...config, stopLossPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                   </div>
-                   <button 
-                    type="button"
-                    onClick={resetAccount} 
-                    className="col-span-2 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-lg text-xs font-black flex items-center justify-center transition-colors mt-2"
-                   >
-                      <Trash2 className="w-3 h-3 mr-2" /> 重置所有数据
-                   </button>
-              </div>
-           </div>
         </div>
 
         {/* BOTTOM: RUNNING TASKS (full width) */}
@@ -3458,11 +3434,33 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </button>
                    </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ── 运行任务横向表格 ── */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  {/* 表头 */}
+                  <div className="flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 text-[9px] font-black text-gray-400 uppercase overflow-x-auto">
+                    <span className="w-[88px] min-w-[88px]">任务备注</span>
+                    <span className="w-[68px] min-w-[68px]">下注规则</span>
+                    <span className="w-[52px] min-w-[52px]">资金策略</span>
+                    <span className="w-[72px] min-w-[72px]">自动目标</span>
+                    <span className="w-[52px] min-w-[52px]">目标选择</span>
+                    <span className="w-[88px] min-w-[88px]">策略参数</span>
+                    <span className="w-[48px] min-w-[48px]">基础注额</span>
+                    <span className="w-[48px] min-w-[48px]">下注模式</span>
+                    <span className="w-[48px] min-w-[48px]">当前注额</span>
+                    <span className="w-[32px] min-w-[32px]">连输</span>
+                    <span className="w-[52px] min-w-[52px]">盈亏</span>
+                    <span className="w-[52px] min-w-[52px]">最高收益</span>
+                    <span className="w-[52px] min-w-[52px]">最大亏损</span>
+                    <span className="w-[52px] min-w-[52px]">累计下注</span>
+                    <span className="w-[52px] min-w-[52px]">最大回撤</span>
+                    <span className="w-[30px] min-w-[30px] text-green-600">赢</span>
+                    <span className="w-[30px] min-w-[30px] text-red-500">输</span>
+                    <span className="ml-auto w-[80px] min-w-[80px] text-right">操作</span>
+                  </div>
                    {tasks.map(task => {
                      const rule = rules.find(r => r.id === task.ruleId);
                      const taskDDRate = config.initialBalance > 0 ? (task.stats.maxDrawdown / config.initialBalance) * 100 : 0;
-                     
+
                      // Helper to generate task badge
                      const getTaskBadgeContent = (t: AutoTask, r?: IntervalRule) => {
                         if (t.config.autoTarget === 'GLOBAL_AI_FULL_SCAN') return { text: 'AI 全域扫描', color: 'bg-indigo-100 text-indigo-600' };
@@ -3558,126 +3556,60 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                      };
                      const strategyParamStr = getStrategyParamStr(task);
 
+                     const profit = task.stats.profit;
                      return (
-                       <div key={task.id} className={`rounded-2xl border-2 transition-all overflow-hidden ${task.isActive ? 'bg-white border-indigo-400 shadow-lg' : 'bg-gray-50 border-gray-200'}`}>
-                          {/* 任务头：运行状态色条 + 名称 + 开关 */}
-                          <div className={`px-4 py-3 flex justify-between items-center ${task.isActive ? 'bg-indigo-600' : 'bg-gray-200'}`}>
-                             <div className="min-w-0 flex-1 mr-2">
-                                <h4 className={`font-black text-sm truncate ${task.isActive ? 'text-white' : 'text-gray-600'}`}>{task.name}</h4>
-                                <div className="flex items-center flex-wrap gap-1 mt-0.5">
-                                   {task.blockRangeEnabled && task.blockStart && task.blockEnd && (
-                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
-                                       #{task.blockStart}~{task.blockEnd}
-                                     </span>
-                                   )}
-                                   {task.timeRangeEnabled && task.timeStart && (
-                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
-                                       {new Date(task.timeStart).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}~{task.timeEnd ? new Date(task.timeEnd).toLocaleString('zh-CN', {hour:'2-digit',minute:'2-digit'}) : ''}
-                                     </span>
-                                   )}
-                                   {task.dailyScheduleEnabled && task.dailyStart && task.dailyEnd && (
-                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
-                                       每日{task.dailyStart}~{task.dailyEnd}
-                                     </span>
-                                   )}
-                                </div>
-                             </div>
-                             <button onClick={() => toggleTask(task.id)} className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${task.isActive ? 'text-white/80 hover:text-white hover:bg-white/20' : 'text-gray-400 hover:bg-gray-300'}`}>
-                                {task.isActive ? <PauseCircle className="w-6 h-6" /> : <PlayCircle className="w-6 h-6" />}
-                             </button>
-                          </div>
-
-                          <div className="p-4 space-y-3">
-                          {/* 配置参数面板 */}
-                          <div className="rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-200">
-                            <div className="grid grid-cols-2 divide-x divide-gray-200">
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">下注规则</span>
-                                <span className="text-[10px] font-bold text-gray-700 truncate block">{rule?.label || '未知规则'}</span>
-                              </div>
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">资金策略</span>
-                                <span className="text-[10px] font-bold text-purple-700 block">{STRATEGY_LABELS[task.config.type]}</span>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 divide-x divide-gray-200">
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">自动目标</span>
-                                <span className="text-[10px] font-bold text-indigo-700 block">{autoTargetShortLabel}</span>
-                              </div>
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">目标选择</span>
-                                <span className="text-[10px] font-bold text-gray-700 block">{targetSelectStr || '—'}</span>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 divide-x divide-gray-200">
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">策略参数</span>
-                                <span className="text-[10px] font-bold text-emerald-700 block truncate">{strategyParamStr}</span>
-                              </div>
-                              <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">基础注额</span>
-                                <span className="text-[10px] font-bold text-gray-700 block">¥{task.baseBet}</span>
-                              </div>
-                            </div>
-                            <div className="px-2.5 py-1.5 flex items-center justify-between">
-                              <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide">下注模式</span>
-                              <button
-                                onClick={() => toggleTaskBetMode(task.id)}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black border transition-colors ${task.betMode === 'REAL' ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${task.betMode === 'REAL' ? 'bg-red-500' : 'bg-blue-400'}`} />
-                                {task.betMode === 'REAL' ? '真实下注' : '模拟下注'}
-                                <ArrowRight className="w-2.5 h-2.5 opacity-60" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* 运行数据 */}
-                          <div className="grid grid-cols-3 gap-2 bg-gray-50/80 p-2 rounded-xl border border-gray-100">
-                             <div className="text-center">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">当前注额</span>
-                                <span className="block text-sm font-black text-gray-800">${task.state.currentBetAmount}</span>
-                             </div>
-                             <div className="text-center border-l border-gray-200">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">连输</span>
-                                <span className="block text-sm font-black text-red-500">{task.state.consecutiveLosses}</span>
-                             </div>
-                             <div className="text-center border-l border-gray-200">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">盈亏</span>
-                                <span className={`block text-sm font-black ${task.stats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{task.stats.profit >= 0 ? '+' : ''}{task.stats.profit.toFixed(0)}</span>
-                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2 p-2 rounded-xl border border-gray-100">
-                             <div className="text-center">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">最高收益</span>
-                                <span className="block text-xs font-black text-green-600">+{task.stats.maxProfit.toFixed(0)}</span>
-                             </div>
-                             <div className="text-center border-l border-gray-200">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">最大亏损</span>
-                                <span className="block text-xs font-black text-red-500">{task.stats.maxLoss.toFixed(0)}</span>
-                             </div>
-                             <div className="text-center border-l border-gray-200">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">累计下注</span>
-                                <span className="block text-xs font-black text-blue-600">${(task.stats.totalBetAmount || 0).toLocaleString()}</span>
-                             </div>
-                          </div>
-
-                          <div className="bg-red-50 rounded-xl p-2 flex items-center justify-center text-[10px] font-black text-red-500 border border-red-100">
-                             <ShieldAlert className="w-3 h-3 mr-1.5" />
-                             最大回撤: -${task.stats.maxDrawdown.toFixed(0)} (-{taskDDRate.toFixed(1)}%)
-                          </div>
-
-                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 pt-1">
-                             <span className="font-black">W: <span className="text-green-600">{task.stats.wins}</span> / L: <span className="text-red-400">{task.stats.losses}</span></span>
-                             <div className="flex items-center space-x-2">
-                               <button onClick={() => resetTask(task.id)} className="text-gray-300 hover:text-amber-500 flex items-center gap-0.5"><RefreshCw className="w-3 h-3" /> 重置</button>
-                               {!task.isActive && <button onClick={() => editTask(task.id)} className="text-gray-300 hover:text-blue-500 flex items-center gap-0.5"><Settings2 className="w-3 h-3" /> 编辑</button>}
-                               <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 flex items-center gap-0.5"><Trash2 className="w-3 h-3" /> 删除</button>
-                             </div>
-                          </div>
-                          </div>
+                       <div key={task.id} className={`flex items-center px-3 py-2 border-b border-gray-50 text-[11px] overflow-x-auto transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
+                         {/* 任务备注 */}
+                         <div className="w-[88px] min-w-[88px] pr-1">
+                           <span className={`font-black truncate block text-[11px] ${task.isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{task.name}</span>
+                           {(task.blockRangeEnabled && task.blockStart) && <span className="text-[8px] text-indigo-400 font-bold block truncate">#{task.blockStart}~{task.blockEnd}</span>}
+                           {(task.dailyScheduleEnabled && task.dailyStart) && <span className="text-[8px] text-green-500 font-bold block">{task.dailyStart}~{task.dailyEnd}</span>}
+                         </div>
+                         {/* 下注规则 */}
+                         <span className="w-[68px] min-w-[68px] text-[10px] text-gray-500 font-bold truncate pr-1">{rule?.label || '—'}</span>
+                         {/* 资金策略 */}
+                         <span className="w-[52px] min-w-[52px] text-[10px] text-purple-600 font-bold truncate pr-1">{STRATEGY_LABELS[task.config.type]}</span>
+                         {/* 自动目标 */}
+                         <span className="w-[72px] min-w-[72px] text-[10px] text-indigo-600 font-bold truncate pr-1">{autoTargetShortLabel}</span>
+                         {/* 目标选择 */}
+                         <span className="w-[52px] min-w-[52px] text-[10px] text-gray-600 font-bold truncate pr-1">{targetSelectStr || '—'}</span>
+                         {/* 策略参数 */}
+                         <span className="w-[88px] min-w-[88px] text-[9px] text-emerald-700 font-bold truncate pr-1">{strategyParamStr}</span>
+                         {/* 基础注额 */}
+                         <span className="w-[48px] min-w-[48px] text-[10px] text-gray-600 font-bold pr-1">¥{task.baseBet}</span>
+                         {/* 下注模式 */}
+                         <span className={`w-[48px] min-w-[48px] pr-1`}>
+                           <button onClick={() => toggleTaskBetMode(task.id)} className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${task.betMode === 'REAL' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-blue-50 text-blue-500 border-blue-200'}`}>
+                             {task.betMode === 'REAL' ? '真实' : '模拟'}
+                           </button>
+                         </span>
+                         {/* 当前注额 */}
+                         <span className="w-[48px] min-w-[48px] font-black text-gray-800 pr-1">{task.state.currentBetAmount}</span>
+                         {/* 连输 */}
+                         <span className={`w-[32px] min-w-[32px] font-black pr-1 ${task.state.consecutiveLosses > 0 ? 'text-red-500' : 'text-gray-400'}`}>{task.state.consecutiveLosses}</span>
+                         {/* 盈亏 */}
+                         <span className={`w-[52px] min-w-[52px] font-black pr-1 ${profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400'}`}>{profit > 0 ? '+' : ''}{profit.toFixed(0)}</span>
+                         {/* 最高收益 */}
+                         <span className="w-[52px] min-w-[52px] text-green-600 font-bold pr-1">+{task.stats.maxProfit.toFixed(0)}</span>
+                         {/* 最大亏损 */}
+                         <span className="w-[52px] min-w-[52px] text-red-500 font-bold pr-1">{task.stats.maxLoss.toFixed(0)}</span>
+                         {/* 累计下注 */}
+                         <span className="w-[52px] min-w-[52px] text-blue-600 font-bold pr-1">{(task.stats.totalBetAmount || 0).toLocaleString()}</span>
+                         {/* 最大回撤 */}
+                         <span className="w-[52px] min-w-[52px] text-red-400 font-bold pr-1" title={`${taskDDRate.toFixed(1)}%`}>{task.stats.maxDrawdown.toFixed(0)}</span>
+                         {/* 赢 */}
+                         <span className="w-[30px] min-w-[30px] text-green-600 font-black">{task.stats.wins}</span>
+                         {/* 输 */}
+                         <span className="w-[30px] min-w-[30px] text-red-500 font-black pr-1">{task.stats.losses}</span>
+                         {/* 操作 */}
+                         <div className="ml-auto w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
+                           <button onClick={() => toggleTask(task.id)} className={`p-1 rounded-lg transition-colors ${task.isActive ? 'text-indigo-500 hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-100'}`} title={task.isActive ? '暂停' : '启动'}>
+                             {task.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                           </button>
+                           {!task.isActive && <button onClick={() => editTask(task.id)} className="p-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors" title="编辑"><Settings2 className="w-4 h-4" /></button>}
+                           <button onClick={() => resetTask(task.id)} className="p-1 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors" title="重置"><RefreshCw className="w-4 h-4" /></button>
+                           <button onClick={() => deleteTask(task.id)} className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"><Trash2 className="w-4 h-4" /></button>
+                         </div>
                        </div>
                      );
                    })}
