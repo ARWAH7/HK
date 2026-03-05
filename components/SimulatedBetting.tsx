@@ -2752,28 +2752,33 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               </div>
 
               {showConfig && (
-                <div className="space-y-4 animate-in slide-in-from-top-2">
-                   
+                <div className="animate-in slide-in-from-top-2 space-y-3">
+                  {/* ── 两列主体 ── */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+
+                    {/* ═══ LEFT COLUMN (2/5) ═══ */}
+                    <div className="md:col-span-2 space-y-3">
+
                    {/* Task Name */}
                    <div>
                       <label className="text-[10px] font-black text-gray-400 uppercase ml-1">任务备注</label>
-                      <input 
-                        type="text" 
-                        value={draftName} 
+                      <input
+                        type="text"
+                        value={draftName}
                         onChange={e => setDraftName(e.target.value)}
                         placeholder="例如：3秒平注追单..."
-                        className="w-full mt-1 px-4 py-2.5 bg-gray-50 border-transparent focus:bg-white focus:border-indigo-500 border-2 rounded-xl text-xs font-bold outline-none transition-all"
+                        className="w-full mt-1 px-3 py-2 bg-gray-50 border-transparent focus:bg-white focus:border-indigo-500 border-2 rounded-xl text-xs font-bold outline-none transition-all"
                       />
                    </div>
 
-                   {/* Rule Selector (Hidden for Global Modes) */}
+                   {/* Rule Selector */}
                    {!draftConfig.autoTarget.startsWith('GLOBAL') && draftConfig.autoTarget !== 'RULE_TREND_DRAGON' && draftConfig.autoTarget !== 'RULE_BEAD_DRAGON' && (
-                     <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50">
-                        <label className="text-[10px] font-black text-gray-400 uppercase block mb-2">下注规则 (秒数)</label>
-                        <select 
-                          value={draftRuleId} 
+                     <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100/50">
+                        <label className="text-[10px] font-black text-gray-400 uppercase block mb-1.5">下注规则</label>
+                        <select
+                          value={draftRuleId}
                           onChange={e => setDraftRuleId(e.target.value)}
-                          className="w-full bg-white text-indigo-900 rounded-xl px-3 py-2 text-xs font-black border border-indigo-100 outline-none cursor-pointer shadow-sm"
+                          className="w-full bg-white text-indigo-900 rounded-lg px-2.5 py-1.5 text-xs font-black border border-indigo-100 outline-none cursor-pointer"
                         >
                            {rules.map(r => (
                              <option key={r.id} value={r.id}>{r.label} (步长: {r.value})</option>
@@ -2782,40 +2787,32 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                      </div>
                    )}
                    {draftConfig.autoTarget.startsWith('GLOBAL') && (
-                      <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100/50 flex items-center space-x-2">
-                          {draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? (
-                             <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
-                          ) : (
-                             <Activity className="w-5 h-5 text-amber-500 animate-pulse" />
-                          )}
-                          <span className="text-xs font-black text-amber-700">
-                             {draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? 'AI 全域全规则：最优解自动锁定' : '全域扫描模式已激活：自动匹配所有规则'}
-                          </span>
+                      <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50 flex items-center space-x-2">
+                          {draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? <Sparkles className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" /> : <Activity className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" />}
+                          <span className="text-[10px] font-black text-amber-700">{draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? 'AI全域：最优解自动锁定' : '全域扫描：自动匹配所有规则'}</span>
                       </div>
                    )}
                    {(draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON') && (
-                      <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100/50 flex items-center space-x-2">
-                          <Activity className="w-5 h-5 text-amber-500 animate-pulse" />
-                          <span className="text-xs font-black text-amber-700">
-                             {draftConfig.autoTarget === 'RULE_TREND_DRAGON' ? '规则走势长龙：在选中规则中寻找最长连续' : '规则珠盘长龙：在选中规则的珠盘中寻找最长连续'}
-                          </span>
+                      <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50 flex items-center space-x-2">
+                          <Activity className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" />
+                          <span className="text-[10px] font-black text-amber-700">{draftConfig.autoTarget === 'RULE_TREND_DRAGON' ? '规则走势龙：选中规则找最长连续' : '规则珠盘龙：珠盘中找最长连续'}</span>
                       </div>
                    )}
 
                    {/* Strategy Type */}
                    <div>
                       <label className="text-[10px] font-black text-gray-400 uppercase ml-1">资金策略</label>
-                      <select 
-                        value={draftConfig.type} 
+                      <select
+                        value={draftConfig.type}
                         onChange={e => setDraftConfig({...draftConfig, type: e.target.value as StrategyType})}
-                        className="w-full bg-gray-50 text-gray-800 rounded-xl px-3 py-2.5 text-xs font-black border border-transparent focus:border-indigo-500 outline-none mt-1"
+                        className="w-full bg-gray-50 text-gray-800 rounded-xl px-3 py-2 text-xs font-black border border-transparent focus:border-indigo-500 outline-none mt-1"
                       >
                          {Object.entries(STRATEGY_LABELS).filter(([k]) => k !== 'MANUAL').map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                          ))}
                       </select>
                    </div>
-                   
+
                    {/* Strategy Params */}
                    {draftConfig.type === 'MARTINGALE' && (
                       <div className="grid grid-cols-2 gap-2">
@@ -2846,57 +2843,20 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             const seq = txt.split(/[,，\s]+/).map(s => parseFloat(s)).filter(n => !isNaN(n) && n > 0);
                             setDraftConfig({...draftConfig, customSequence: seq.length > 0 ? seq : [1]});
                           }}
-                          className="w-full bg-white rounded-lg px-2 py-1.5 text-xs font-black border border-transparent focus:border-indigo-200 outline-none h-16 resize-none"
+                          className="w-full bg-white rounded-lg px-2 py-1.5 text-xs font-black border border-transparent focus:border-indigo-200 outline-none h-14 resize-none"
                           placeholder="1, 2, 3, 5, 8..."
                         />
-                        {/* 保存当前序列 */}
                         <div className="flex gap-1.5">
-                          <input
-                            type="text"
-                            value={seqSaveName}
-                            onChange={e => setSeqSaveName(e.target.value)}
-                            placeholder="序列名称..."
-                            className="flex-1 bg-white rounded-lg px-2 py-1 text-[10px] font-bold border border-gray-200 outline-none focus:border-indigo-300"
-                          />
-                          <button
-                            onClick={() => {
-                              const name = seqSaveName.trim() || `序列${savedSequences.length + 1}`;
-                              const seq = draftConfig.customSequence || [1];
-                              const updated = [...savedSequences.filter(s => s.name !== name), { name, sequence: seq }];
-                              setSavedSequences(updated);
-                              localStorage.setItem('haxi-custom-sequences', JSON.stringify(updated));
-                              setSeqSaveName('');
-                            }}
-                            className="px-2.5 py-1 bg-green-500 text-white rounded-lg text-[10px] font-black hover:bg-green-600 transition-colors whitespace-nowrap"
-                          >
-                            保存
-                          </button>
+                          <input type="text" value={seqSaveName} onChange={e => setSeqSaveName(e.target.value)} placeholder="序列名称..." className="flex-1 bg-white rounded-lg px-2 py-1 text-[10px] font-bold border border-gray-200 outline-none focus:border-indigo-300" />
+                          <button onClick={() => { const name = seqSaveName.trim() || `序列${savedSequences.length + 1}`; const seq = draftConfig.customSequence || [1]; const updated = [...savedSequences.filter(s => s.name !== name), { name, sequence: seq }]; setSavedSequences(updated); localStorage.setItem('haxi-custom-sequences', JSON.stringify(updated)); setSeqSaveName(''); }} className="px-2.5 py-1 bg-green-500 text-white rounded-lg text-[10px] font-black hover:bg-green-600 transition-colors whitespace-nowrap">保存</button>
                         </div>
-                        {/* 已保存序列列表 */}
                         {savedSequences.length > 0 && (
                           <div className="space-y-1">
                             <span className="text-[9px] font-bold text-gray-400 uppercase">已保存序列</span>
                             {savedSequences.map((s, i) => (
                               <div key={i} className="flex items-center justify-between bg-white rounded-lg px-2 py-1 border border-gray-100">
-                                <button
-                                  onClick={() => {
-                                    setCustomSeqText(s.sequence.join(', '));
-                                    setDraftConfig({...draftConfig, customSequence: s.sequence});
-                                  }}
-                                  className="flex-1 text-left text-[10px] font-bold text-indigo-600 hover:text-indigo-800 truncate"
-                                >
-                                  {s.name} <span className="text-gray-400">({s.sequence.join(', ')})</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const updated = savedSequences.filter((_, j) => j !== i);
-                                    setSavedSequences(updated);
-                                    localStorage.setItem('haxi-custom-sequences', JSON.stringify(updated));
-                                  }}
-                                  className="text-gray-300 hover:text-red-500 ml-2 p-0.5"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                                <button onClick={() => { setCustomSeqText(s.sequence.join(', ')); setDraftConfig({...draftConfig, customSequence: s.sequence}); }} className="flex-1 text-left text-[10px] font-bold text-indigo-600 hover:text-indigo-800 truncate">{s.name} <span className="text-gray-400">({s.sequence.join(', ')})</span></button>
+                                <button onClick={() => { const updated = savedSequences.filter((_, j) => j !== i); setSavedSequences(updated); localStorage.setItem('haxi-custom-sequences', JSON.stringify(updated)); }} className="text-gray-300 hover:text-red-500 ml-2 p-0.5"><X className="w-3 h-3" /></button>
                               </div>
                             ))}
                           </div>
@@ -2904,90 +2864,53 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
                    {draftConfig.type === 'AI_KELLY' && (
-                      <div className="bg-indigo-50/50 px-4 py-3 rounded-xl border border-indigo-100">
+                      <div className="bg-indigo-50/50 px-3 py-2.5 rounded-xl border border-indigo-100">
                         <div className="flex justify-between items-center mb-2">
-                           <span className="text-[10px] font-black text-indigo-700 uppercase flex items-center">
-                              <Scale className="w-3 h-3 mr-1.5" />
-                              Kelly 风险系数
-                           </span>
-                           <span className="text-xs font-black text-indigo-600 bg-white px-2 py-0.5 rounded shadow-sm">
-                              {((draftConfig.kellyFraction || 0.2) * 100).toFixed(0)}%
-                           </span>
+                           <span className="text-[10px] font-black text-indigo-700 uppercase flex items-center"><Scale className="w-3 h-3 mr-1" />Kelly 风险系数</span>
+                           <span className="text-xs font-black text-indigo-600 bg-white px-2 py-0.5 rounded shadow-sm">{((draftConfig.kellyFraction || 0.2) * 100).toFixed(0)}%</span>
                         </div>
-                        <input 
-                           type="range" 
-                           min="0.1" max="1.0" step="0.1" 
-                           value={draftConfig.kellyFraction || 0.2}
-                           onChange={e => setDraftConfig({...draftConfig, kellyFraction: parseFloat(e.target.value)})}
-                           className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                        />
-                        <div className="flex justify-between text-[8px] font-black text-indigo-400 mt-1 uppercase">
-                           <span>保守 (10%)</span>
-                           <span>激进 (100%)</span>
-                        </div>
+                        <input type="range" min="0.1" max="1.0" step="0.1" value={draftConfig.kellyFraction || 0.2} onChange={e => setDraftConfig({...draftConfig, kellyFraction: parseFloat(e.target.value)})} className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                        <div className="flex justify-between text-[8px] font-black text-indigo-400 mt-1 uppercase"><span>保守 10%</span><span>激进 100%</span></div>
                       </div>
                    )}
 
-                   {/* Target Mode */}
+                    </div>{/* END LEFT */}
+
+                    {/* ═══ RIGHT COLUMN (3/5) ═══ */}
+                    <div className="md:col-span-3 space-y-3">
+
+                   {/* Auto Target — all 28 strategies in grid-cols-4 */}
                    <div>
-                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1">自动目标</label>
-                      <div className="grid grid-cols-2 gap-2 mt-1 mb-2">
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_PREDICTION'})} className={`col-span-1 py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_PREDICTION' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-400 border-gray-200'}`}>
-                            <div className="flex items-center justify-center space-x-1">
-                                <BrainCircuit className="w-3.5 h-3.5" />
-                                <span>AI 单规托管</span>
-                            </div>
-                         </button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_AI_FULL_SCAN'})} className={`col-span-1 py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-400 border-gray-200'}`}>
-                            <div className="flex items-center justify-center space-x-1">
-                                <Sparkles className="w-3.5 h-3.5" />
-                                <span>AI 全域扫描</span>
-                            </div>
-                         </button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_TREND_DRAGON'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_TREND_DRAGON' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200'}`}>全域走势长龙</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_BEAD_DRAGON'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_BEAD_DRAGON' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200'}`}>全域珠盘长龙</button>
-                      </div>
-                      {/* v5.1: AI模型选择 + 胜率触发 */}
-                      <div className="grid grid-cols-2 gap-2 mb-2">
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_MODEL_SELECT', selectedModels: draftConfig.selectedModels?.length ? draftConfig.selectedModels : ['ensemble']})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_MODEL_SELECT' ? 'bg-violet-600 text-white border-violet-600 shadow-md' : 'bg-white text-gray-400 border-gray-200'}`}>
-                            <div className="flex items-center justify-center space-x-1">
-                                <BrainCircuit className="w-3.5 h-3.5" />
-                                <span>模型精选</span>
-                            </div>
-                         </button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_WINRATE_TRIGGER', selectedModels: draftConfig.selectedModels?.length ? draftConfig.selectedModels : ['ensemble'], winRateWindow: draftConfig.winRateWindow || 30, winRateTrigger: draftConfig.winRateTrigger || 30, winRateStop: draftConfig.winRateStop || 60})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_WINRATE_TRIGGER' ? 'bg-cyan-600 text-white border-cyan-600 shadow-md' : 'bg-white text-gray-400 border-gray-200'}`}>
-                            <div className="flex items-center justify-center space-x-1">
-                                <BarChart4 className="w-3.5 h-3.5" />
-                                <span>胜率触发</span>
-                            </div>
-                         </button>
-                      </div>
-                      {/* 单/多规则龙 */}
-                      <div className="grid grid-cols-2 gap-2 mb-2">
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RULE_TREND_DRAGON', selectedRuleIds: draftConfig.selectedRuleIds?.length ? draftConfig.selectedRuleIds : [draftRuleId]})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RULE_TREND_DRAGON' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-400 border-gray-200'}`}>规则走势长龙</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RULE_BEAD_DRAGON', selectedRuleIds: draftConfig.selectedRuleIds?.length ? draftConfig.selectedRuleIds : [draftRuleId]})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RULE_BEAD_DRAGON' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-400 border-gray-200'}`}>规则珠盘长龙</button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FIXED', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['ODD']})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FIXED' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-400 border-gray-200'}`}>定投目标</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RANDOM', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['ODD', 'EVEN']})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RANDOM' ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-gray-400 border-gray-200'}`}>随机目标</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_LAST'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_LAST' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-400 border-gray-200'}`}>跟上期(顺)</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_LAST'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_LAST' ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-400 border-gray-200'}`}>反上期(砍)</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>顺势跟投</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_REVERSE'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>反势跟投</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_FOLLOW'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_FOLLOW' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙顺势</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_REVERSE'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_REVERSE' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙反势</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_FOLLOW'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙顺势</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_REVERSE'})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙反势</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'OSCILLATION_REVERSE', oscillationCount: draftConfig.oscillationCount || 3})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'OSCILLATION_REVERSE' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-400 border-gray-200'}`}>振荡反转</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'PATTERN_MATCH', patternLength: draftConfig.patternLength || 4, patternMinMatch: draftConfig.patternMinMatch || 3})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'PATTERN_MATCH' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white text-gray-400 border-gray-200'}`}>模式匹配</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'STREAK_BREAK_REVERSE', streakBreakCount: draftConfig.streakBreakCount || 4})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>确认反转</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MULTI_MODEL_CONSENSUS', consensusMinModels: draftConfig.consensusMinModels || 5})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>模型共识</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DYNAMIC_CYCLE', cycleMaxLength: draftConfig.cycleMaxLength || 8})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DYNAMIC_CYCLE' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>动态周期</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MEAN_REVERSION', meanReversionWindow: draftConfig.meanReversionWindow || 30, zScoreThreshold: draftConfig.zScoreThreshold || 2.0})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MEAN_REVERSION' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>均值回归</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'HOT_COLD_SWITCH', hotColdWindow: draftConfig.hotColdWindow || 20, hotThreshold: draftConfig.hotThreshold || 65})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'HOT_COLD_SWITCH' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>冷热跟随</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DUAL_MOMENTUM', dualMomentumWindow: draftConfig.dualMomentumWindow || 15, dualMomentumThreshold: draftConfig.dualMomentumThreshold || 60})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DUAL_MOMENTUM' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>双重动量</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_DRAGON_MARTINGALE', rDragonMinStreak: draftConfig.rDragonMinStreak || 5})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-gray-400 border-gray-200'}`}>反龙马丁</button>
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1.5">自动目标</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_PREDICTION'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_PREDICTION' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-400 border-gray-200'}`}>AI单规</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_AI_FULL_SCAN'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-200'}`}>AI全域</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_MODEL_SELECT', selectedModels: draftConfig.selectedModels?.length ? draftConfig.selectedModels : ['ensemble']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_MODEL_SELECT' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>模型精选</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'AI_WINRATE_TRIGGER', selectedModels: draftConfig.selectedModels?.length ? draftConfig.selectedModels : ['ensemble'], winRateWindow: draftConfig.winRateWindow || 30, winRateTrigger: draftConfig.winRateTrigger || 30, winRateStop: draftConfig.winRateStop || 60})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'AI_WINRATE_TRIGGER' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>胜率触发</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_TREND_DRAGON'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_TREND_DRAGON' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200'}`}>全域走势龙</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'GLOBAL_BEAD_DRAGON'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'GLOBAL_BEAD_DRAGON' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200'}`}>全域珠盘龙</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RULE_TREND_DRAGON', selectedRuleIds: draftConfig.selectedRuleIds?.length ? draftConfig.selectedRuleIds : [draftRuleId]})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RULE_TREND_DRAGON' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-400 border-gray-200'}`}>规则走势龙</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RULE_BEAD_DRAGON', selectedRuleIds: draftConfig.selectedRuleIds?.length ? draftConfig.selectedRuleIds : [draftRuleId]})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RULE_BEAD_DRAGON' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-400 border-gray-200'}`}>规则珠盘龙</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FIXED', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['ODD']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FIXED' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-400 border-gray-200'}`}>定投目标</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'RANDOM', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['ODD', 'EVEN']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'RANDOM' ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-gray-400 border-gray-200'}`}>随机目标</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_LAST'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_LAST' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-400 border-gray-200'}`}>跟上期顺</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_LAST'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_LAST' ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-400 border-gray-200'}`}>反上期砍</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期顺势</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期反势</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_FOLLOW' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙顺</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_REVERSE' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙反</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙顺</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙反</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'OSCILLATION_REVERSE', oscillationCount: draftConfig.oscillationCount || 3})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'OSCILLATION_REVERSE' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-400 border-gray-200'}`}>振荡反转</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'PATTERN_MATCH', patternLength: draftConfig.patternLength || 4, patternMinMatch: draftConfig.patternMinMatch || 3})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'PATTERN_MATCH' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white text-gray-400 border-gray-200'}`}>模式匹配</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'STREAK_BREAK_REVERSE', streakBreakCount: draftConfig.streakBreakCount || 4})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>确认反转</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MULTI_MODEL_CONSENSUS', consensusMinModels: draftConfig.consensusMinModels || 5})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>模型共识</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DYNAMIC_CYCLE', cycleMaxLength: draftConfig.cycleMaxLength || 8})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DYNAMIC_CYCLE' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>动态周期</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MEAN_REVERSION', meanReversionWindow: draftConfig.meanReversionWindow || 30, zScoreThreshold: draftConfig.zScoreThreshold || 2.0})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MEAN_REVERSION' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>均值回归</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'HOT_COLD_SWITCH', hotColdWindow: draftConfig.hotColdWindow || 20, hotThreshold: draftConfig.hotThreshold || 65})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'HOT_COLD_SWITCH' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>冷热跟随</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DUAL_MOMENTUM', dualMomentumWindow: draftConfig.dualMomentumWindow || 15, dualMomentumThreshold: draftConfig.dualMomentumThreshold || 60})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DUAL_MOMENTUM' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>双重动量</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_DRAGON_MARTINGALE', rDragonMinStreak: draftConfig.rDragonMinStreak || 5})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-gray-400 border-gray-200'}`}>反龙马丁</button>
                       </div>
                    </div>
 
@@ -3356,195 +3279,95 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
-                   <div className="pt-4 border-t border-gray-100 mt-2">
-                      <div className="flex items-center justify-between mb-3">
-                         <span className="text-xs font-bold text-gray-500">基础注额 (每单)</span>
-                         <input type="number" value={config.baseBet} onChange={(e) => setConfig({...config, baseBet: parseFloat(e.target.value)})} className="w-20 text-right bg-gray-50 px-2 py-1 rounded-lg text-xs font-black" />
-                      </div>
+                    </div>{/* END RIGHT COLUMN */}
+                  </div>{/* END GRID */}
 
-                      {/* 下注模式选择: 模拟 vs 真实 */}
-                      <div className="flex items-center justify-between mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                         <div className="flex flex-col">
-                           <span className="text-xs font-bold text-gray-600">下注模式</span>
-                           <span className="text-[10px] text-gray-400">
-                             {draftBetMode === 'REAL' ? '通过插件在游戏页面真实下注' : '仅模拟计算，不实际下注'}
-                           </span>
+                  {/* ── BOTTOM SECTION (全宽) ── */}
+                  <div className="pt-3 border-t border-gray-100">
+                     <div className="grid grid-cols-2 gap-3 mb-3">
+                       <div>
+                         <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">基础注额 (每单)</label>
+                         <input type="number" value={config.baseBet} onChange={(e) => setConfig({...config, baseBet: parseFloat(e.target.value)})} className="w-full text-right bg-gray-50 px-2 py-2 rounded-xl text-xs font-black border border-transparent focus:border-indigo-300 outline-none" />
+                       </div>
+                       <div>
+                         <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">下注模式</label>
+                         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden h-[34px]">
+                           <button onClick={() => setDraftBetMode('SIMULATED')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'SIMULATED' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>模拟</button>
+                           <button onClick={() => setDraftBetMode('REAL')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'REAL' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>真实</button>
                          </div>
-                         <div className="flex bg-white rounded-lg border border-gray-200 overflow-hidden">
-                           <button
-                             onClick={() => setDraftBetMode('SIMULATED')}
-                             className={`px-3 py-1.5 text-[11px] font-black transition-all ${draftBetMode === 'SIMULATED' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                           >
-                             模拟
-                           </button>
-                           <button
-                             onClick={() => setDraftBetMode('REAL')}
-                             className={`px-3 py-1.5 text-[11px] font-black transition-all ${draftBetMode === 'REAL' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                           >
-                             真实
+                       </div>
+                     </div>
+                     {draftBetMode === 'REAL' && (
+                       <div className={`mb-3 p-2.5 rounded-xl text-[11px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
+                         <span className={`w-2 h-2 rounded-full mr-2 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
+                         {pluginReady
+                           ? <>插件已连接 {realBalance != null && <span className="ml-auto text-green-700">余额: ¥{realBalance.toFixed(2)}</span>}</>
+                           : '插件未检测到 — 请确保已安装并刷新游戏页面'
+                         }
+                       </div>
+                     )}
+                     {/* 3 toggle switches side by side */}
+                     <div className="grid grid-cols-3 gap-2 mb-3">
+                       {/* 区块范围 */}
+                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                         <div className="flex items-center justify-between mb-1.5">
+                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><Layers className="w-3 h-3 mr-1" />区块范围</span>
+                           <button onClick={() => setDraftBlockRangeEnabled(!draftBlockRangeEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftBlockRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftBlockRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                            </button>
                          </div>
-                      </div>
-                      {draftBetMode === 'REAL' && (
-                        <div className={`mb-3 p-2.5 rounded-xl text-[11px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
-                          <span className={`w-2 h-2 rounded-full mr-2 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
-                          {pluginReady
-                            ? <>插件已连接 {realBalance != null && <span className="ml-auto text-green-700">余额: ¥{realBalance.toFixed(2)}</span>}</>
-                            : '插件未检测到 — 请确保已安装并刷新游戏页面'
-                          }
-                        </div>
-                      )}
-
-                      {/* 区块范围限制 */}
-                      <div className="mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-gray-600 flex items-center">
-                            <Layers className="w-3 h-3 mr-1" /> 区块范围限制
-                          </span>
-                          <button
-                            onClick={() => setDraftBlockRangeEnabled(!draftBlockRangeEnabled)}
-                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftBlockRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}
-                          >
-                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${draftBlockRangeEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                          </button>
-                        </div>
-                        {draftBlockRangeEnabled && (
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">起始区块</label>
-                              <input
-                                type="number"
-                                value={draftBlockStart || ''}
-                                onChange={e => setDraftBlockStart(parseInt(e.target.value) || 0)}
-                                placeholder="例: 80360900"
-                                className="w-full bg-white rounded-lg px-2 py-1.5 text-xs font-black border border-gray-200 outline-none focus:border-indigo-400"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">结束区块</label>
-                              <input
-                                type="number"
-                                value={draftBlockEnd || ''}
-                                onChange={e => setDraftBlockEnd(parseInt(e.target.value) || 0)}
-                                placeholder="例: 80360950"
-                                className="w-full bg-white rounded-lg px-2 py-1.5 text-xs font-black border border-gray-200 outline-none focus:border-indigo-400"
-                              />
-                            </div>
-                            {draftBlockStart > 0 && draftBlockEnd > 0 && (
-                              <p className="col-span-2 text-[9px] font-semibold text-indigo-500">
-                                仅在区块 {draftBlockStart} ~ {draftBlockEnd} 范围内下注 (共{draftBlockEnd - draftBlockStart}个区块)
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 时间范围限制 */}
-                      <div className="mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-gray-600 flex items-center">
-                            <Clock className="w-3 h-3 mr-1" /> 时间范围限制
-                          </span>
-                          <button
-                            onClick={() => setDraftTimeRangeEnabled(!draftTimeRangeEnabled)}
-                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftTimeRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}
-                          >
-                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${draftTimeRangeEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                          </button>
-                        </div>
-                        {draftTimeRangeEnabled && (
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">开始时间</label>
-                              <input
-                                type="datetime-local"
-                                value={draftTimeStart}
-                                onChange={e => setDraftTimeStart(e.target.value)}
-                                className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-indigo-400"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">结束时间</label>
-                              <input
-                                type="datetime-local"
-                                value={draftTimeEnd}
-                                onChange={e => setDraftTimeEnd(e.target.value)}
-                                className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-indigo-400"
-                              />
-                            </div>
-                            {draftTimeStart && draftTimeEnd && (
-                              <p className="col-span-2 text-[9px] font-semibold text-indigo-500">
-                                从 {new Date(draftTimeStart).toLocaleString('zh-CN')} 到 {new Date(draftTimeEnd).toLocaleString('zh-CN')}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 每日定时 */}
-                      <div className="mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-gray-600 flex items-center">
-                            <RefreshCw className="w-3 h-3 mr-1" /> 每日定时执行
-                          </span>
-                          <button
-                            onClick={() => setDraftDailyScheduleEnabled(!draftDailyScheduleEnabled)}
-                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftDailyScheduleEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
-                          >
-                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${draftDailyScheduleEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                          </button>
-                        </div>
-                        {draftDailyScheduleEnabled && (
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">每日开始</label>
-                              <input
-                                type="time"
-                                step="60"
-                                value={draftDailyStart}
-                                onChange={e => setDraftDailyStart(e.target.value)}
-                                className="w-full bg-white rounded-lg px-2 py-2 text-sm font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none"
-                                style={{ minHeight: '36px' }}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">每日结束</label>
-                              <input
-                                type="time"
-                                step="60"
-                                value={draftDailyEnd}
-                                onChange={e => setDraftDailyEnd(e.target.value)}
-                                className="w-full bg-white rounded-lg px-2 py-2 text-sm font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none"
-                                style={{ minHeight: '36px' }}
-                              />
-                            </div>
-                            <p className="col-span-2 text-[9px] font-semibold text-green-600">
-                              {(() => {
-                                const [sh, sm] = draftDailyStart.split(':').map(Number);
-                                const [eh, em] = draftDailyEnd.split(':').map(Number);
-                                const startMin = sh * 60 + sm;
-                                const endMin = eh * 60 + em;
-                                const isCrossMidnight = endMin <= startMin;
-                                return isCrossMidnight
-                                  ? `每天 ${draftDailyStart} ~ 次日${draftDailyEnd} 自动运行 (跨午夜)`
-                                  : `每天 ${draftDailyStart} ~ ${draftDailyEnd} 自动运行`;
-                              })()}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={createTask}
-                        className={`w-full py-3.5 text-white rounded-xl font-black text-sm flex items-center justify-center transition-all shadow-lg active:scale-95 ${
-                          draftBetMode === 'REAL'
-                            ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
-                            : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                        }`}
-                      >
-                        <Plus className="w-4 h-4 mr-2" /> {draftBetMode === 'REAL' ? '添加真实下注任务' : '添加托管任务'}
-                      </button>
-                   </div>
+                         {draftBlockRangeEnabled && (
+                           <div className="space-y-1.5 mt-1">
+                             <input type="number" value={draftBlockStart || ''} onChange={e => setDraftBlockStart(parseInt(e.target.value) || 0)} placeholder="起始区块" className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-black border border-gray-200 outline-none focus:border-indigo-400" />
+                             <input type="number" value={draftBlockEnd || ''} onChange={e => setDraftBlockEnd(parseInt(e.target.value) || 0)} placeholder="结束区块" className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-black border border-gray-200 outline-none focus:border-indigo-400" />
+                             {draftBlockStart > 0 && draftBlockEnd > 0 && <p className="text-[9px] font-semibold text-indigo-500">{draftBlockStart}~{draftBlockEnd} (共{draftBlockEnd-draftBlockStart}个)</p>}
+                           </div>
+                         )}
+                       </div>
+                       {/* 时间范围 */}
+                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                         <div className="flex items-center justify-between mb-1.5">
+                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><Clock className="w-3 h-3 mr-1" />时间范围</span>
+                           <button onClick={() => setDraftTimeRangeEnabled(!draftTimeRangeEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftTimeRangeEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftTimeRangeEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                           </button>
+                         </div>
+                         {draftTimeRangeEnabled && (
+                           <div className="space-y-1.5 mt-1">
+                             <input type="datetime-local" value={draftTimeStart} onChange={e => setDraftTimeStart(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[9px] font-bold border border-gray-200 outline-none focus:border-indigo-400" />
+                             <input type="datetime-local" value={draftTimeEnd} onChange={e => setDraftTimeEnd(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[9px] font-bold border border-gray-200 outline-none focus:border-indigo-400" />
+                             {draftTimeStart && draftTimeEnd && <p className="text-[9px] font-semibold text-indigo-500">{new Date(draftTimeStart).toLocaleString('zh-CN')} ~ {new Date(draftTimeEnd).toLocaleString('zh-CN')}</p>}
+                           </div>
+                         )}
+                       </div>
+                       {/* 每日定时 */}
+                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                         <div className="flex items-center justify-between mb-1.5">
+                           <span className="text-[10px] font-bold text-gray-600 flex items-center"><RefreshCw className="w-3 h-3 mr-1" />每日定时</span>
+                           <button onClick={() => setDraftDailyScheduleEnabled(!draftDailyScheduleEnabled)} className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftDailyScheduleEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                             <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200 ${draftDailyScheduleEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                           </button>
+                         </div>
+                         {draftDailyScheduleEnabled && (
+                           <div className="space-y-1.5 mt-1">
+                             <input type="time" step="60" value={draftDailyStart} onChange={e => setDraftDailyStart(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none" />
+                             <input type="time" step="60" value={draftDailyEnd} onChange={e => setDraftDailyEnd(e.target.value)} className="w-full bg-white rounded-lg px-2 py-1.5 text-[10px] font-bold border border-gray-200 outline-none focus:border-green-400 appearance-none" />
+                             <p className="text-[9px] font-semibold text-green-600">{(() => { const [sh,sm]=(draftDailyStart||'00:00').split(':').map(Number); const [eh,em]=(draftDailyEnd||'00:00').split(':').map(Number); const cross=(eh*60+em)<=(sh*60+sm); return cross?`${draftDailyStart}~次日${draftDailyEnd}(跨夜)`:`${draftDailyStart}~${draftDailyEnd}`; })()}</p>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                     <button
+                       onClick={createTask}
+                       className={`w-full py-3.5 text-white rounded-xl font-black text-sm flex items-center justify-center transition-all shadow-lg active:scale-95 ${
+                         draftBetMode === 'REAL'
+                           ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
+                           : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                       }`}
+                     >
+                       <Plus className="w-4 h-4 mr-2" /> {draftBetMode === 'REAL' ? '添加真实下注任务' : '添加托管任务'}
+                     </button>
+                  </div>{/* END BOTTOM */}
                 </div>
               )}
            </div>
