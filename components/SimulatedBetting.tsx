@@ -3278,7 +3278,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    )}
 
                    {/* 模式参数 */}
-                   {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_MODEL_SELECT' || draftConfig.autoTarget === 'AI_WINRATE_TRIGGER' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON' || draftConfig.autoTarget === 'OSCILLATION_REVERSE' || draftConfig.autoTarget === 'PATTERN_MATCH' || draftConfig.autoTarget === 'STREAK_BREAK_REVERSE' || draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' || draftConfig.autoTarget === 'DYNAMIC_CYCLE') && (
+                   {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON') && (
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-2">
                           {(draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE') && (
                              <div className="flex items-center justify-between">
@@ -3373,26 +3373,25 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         <label className="text-[9px] font-bold text-gray-400 block mb-0.5">止损 (%本金)</label>
                         <input type="number" value={config.stopLossPercent || 0} onChange={e => setConfig({...config, stopLossPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
                       </div>
+                      {/* ── 添加 + 重置 按钮 ── */}
+                      <div className="flex gap-1.5 pt-1">
+                        <button
+                          onClick={createTask}
+                          className={`flex-1 py-2 text-white rounded-xl font-black text-xs flex items-center justify-center transition-all shadow-md active:scale-95 ${draftBetMode === 'REAL' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> {draftBetMode === 'REAL' ? '添加真实任务' : '添加托管任务'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetAccount}
+                          className="px-3 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-xl text-[10px] font-black flex items-center transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" /> 重置
+                        </button>
+                      </div>
                     </div>{/* END RIGHT COLUMN */}
 
                   </div>{/* END GRID */}
-
-                  {/* ── BOTTOM: 添加 + 重置 ── */}
-                  <div className="flex gap-2 pt-2 border-t border-gray-100">
-                    <button
-                      onClick={createTask}
-                      className={`flex-1 py-3 text-white rounded-xl font-black text-sm flex items-center justify-center transition-all shadow-lg active:scale-95 ${draftBetMode === 'REAL' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
-                    >
-                      <Plus className="w-4 h-4 mr-2" /> {draftBetMode === 'REAL' ? '添加真实下注任务' : '添加托管任务'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetAccount}
-                      className="px-5 py-3 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-xl text-xs font-black flex items-center transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1.5" /> 重置所有任务
-                    </button>
-                  </div>
                 </div>
               )}
            </div>
@@ -3437,13 +3436,13 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                 {/* ── 运行任务横向表格 ── */}
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                   {/* 表头 */}
-                  <div className="flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 text-[9px] font-black text-gray-400 uppercase overflow-x-auto">
+                  <div className="flex items-center px-3 py-2 bg-gray-700 text-[10px] font-black text-gray-200 uppercase overflow-x-auto">
                     <span className="w-[88px] min-w-[88px]">任务备注</span>
                     <span className="w-[68px] min-w-[68px]">下注规则</span>
                     <span className="w-[52px] min-w-[52px]">资金策略</span>
                     <span className="w-[72px] min-w-[72px]">自动目标</span>
                     <span className="w-[52px] min-w-[52px]">目标选择</span>
-                    <span className="w-[88px] min-w-[88px]">策略参数</span>
+                    <span className="flex-1 min-w-[120px]">策略参数</span>
                     <span className="w-[48px] min-w-[48px]">基础注额</span>
                     <span className="w-[48px] min-w-[48px]">下注模式</span>
                     <span className="w-[48px] min-w-[48px]">当前注额</span>
@@ -3453,9 +3452,9 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                     <span className="w-[52px] min-w-[52px]">最大亏损</span>
                     <span className="w-[52px] min-w-[52px]">累计下注</span>
                     <span className="w-[52px] min-w-[52px]">最大回撤</span>
-                    <span className="w-[30px] min-w-[30px] text-green-600">赢</span>
-                    <span className="w-[30px] min-w-[30px] text-red-500">输</span>
-                    <span className="ml-auto w-[80px] min-w-[80px] text-right">操作</span>
+                    <span className="w-[30px] min-w-[30px] text-green-300">赢</span>
+                    <span className="w-[30px] min-w-[30px] text-red-300">输</span>
+                    <span className="w-[80px] min-w-[80px] flex-shrink-0 text-right">操作</span>
                   </div>
                    {tasks.map(task => {
                      const rule = rules.find(r => r.id === task.ruleId);
@@ -3574,7 +3573,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          {/* 目标选择 */}
                          <span className="w-[52px] min-w-[52px] text-[10px] text-gray-600 font-bold truncate pr-1">{targetSelectStr || '—'}</span>
                          {/* 策略参数 */}
-                         <span className="w-[88px] min-w-[88px] text-[9px] text-emerald-700 font-bold truncate pr-1">{strategyParamStr}</span>
+                         <span className="flex-1 min-w-[120px] text-[10px] text-emerald-700 font-bold truncate pr-1">{strategyParamStr}</span>
                          {/* 基础注额 */}
                          <span className="w-[48px] min-w-[48px] text-[10px] text-gray-600 font-bold pr-1">¥{task.baseBet}</span>
                          {/* 下注模式 */}
@@ -3602,7 +3601,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          {/* 输 */}
                          <span className="w-[30px] min-w-[30px] text-red-500 font-black pr-1">{task.stats.losses}</span>
                          {/* 操作 */}
-                         <div className="ml-auto w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
+                         <div className="w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
                            <button onClick={() => toggleTask(task.id)} className={`p-1 rounded-lg transition-colors ${task.isActive ? 'text-indigo-500 hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-100'}`} title={task.isActive ? '暂停' : '启动'}>
                              {task.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
                            </button>
