@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from '
 import { BlockData, IntervalRule } from '../types';
 import { runDeepAnalysisV5, getNextAlignedHeight } from '../utils/aiAnalysis';
 import {
-  Gamepad2, Wallet, TrendingUp, History, CheckCircle2, XCircle,
+  Wallet, TrendingUp, History, CheckCircle2, XCircle,
   Trash2, Clock, Settings2, PlayCircle, StopCircle, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Target, ArrowRight, Percent, BarChart4,
   Plus, Layers, Activity, PauseCircle, Power, TrendingDown, BrainCircuit, ShieldAlert,
@@ -34,7 +34,7 @@ interface SimulatedBettingProps {
   rules: IntervalRule[];
 }
 
-const FRONTEND_VERSION = 'v5.4';
+const FRONTEND_VERSION = 'v5.5';
 
 // ---------------------- TYPES ----------------------
 
@@ -60,6 +60,9 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   | 'MEAN_REVERSION'        // 均值回归：Z分数超阈值时反向下注
   | 'HOT_COLD_SWITCH'       // 冷热跟随：顺势跟随近期热门方向
   | 'ALTERNATING_FOLLOW'    // 交替跳选：检测交替模式预测下期
+  // v5.5 新增
+  | 'DUAL_MOMENTUM'         // 双重动量确认：单双+大小两维度同向才下注
+  | 'REVERSE_DRAGON_MARTINGALE' // 反龙马丁：检测长龙后反向下注+马丁加码
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -153,6 +156,11 @@ interface StrategyConfig {
   // v5.4: 交替跳选参数
   altPatternLength?: number;    // 最小交替序列长度 (默认6)
   altReverseMode?: boolean;     // 是否反向跟随 (默认false)
+  // v5.5: 双重动量确认参数
+  dualMomentumWindow?: number;     // 观察窗口 (默认15)
+  dualMomentumThreshold?: number;  // 单维度动量阈值% (默认60)
+  // v5.5: 反龙马丁参数
+  rDragonMinStreak?: number;    // 触发反转的最小连续长龙 (默认5)
 }
 
 interface StrategyState {
@@ -727,17 +735,12 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   const [draftDailyStart, setDraftDailyStart] = useState('10:00');
   const [draftDailyEnd, setDraftDailyEnd] = useState('10:10');
 
-  const [activeManualRuleId, setActiveManualRuleId] = useState<string>(rules[0]?.id || '');
   const [showConfig, setShowConfig] = useState(true);
 
-  // 修复: 当rules加载/变化时，确保draftRuleId和activeManualRuleId有效值
+  // 修复: 当rules加载/变化时，确保draftRuleId有效值
   useEffect(() => {
     if (rules.length > 0) {
       setDraftRuleId(prev => {
-        if (!prev || !rules.find(r => r.id === prev)) return rules[0].id;
-        return prev;
-      });
-      setActiveManualRuleId(prev => {
         if (!prev || !rules.find(r => r.id === prev)) return rules[0].id;
         return prev;
       });
@@ -814,8 +817,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   }, []);
 
   // Derived Values
-  const manualRule = useMemo(() => rules.find(r => r.id === activeManualRuleId) || rules[0], [rules, activeManualRuleId]);
-  
   // PREPARE CHART DATA (With Timestamps)
   const chartData: ChartPoint[] = useMemo(() => {
     let settled = bets.filter(b => b.status !== 'PENDING');
@@ -1012,6 +1013,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     if (task.config.autoTarget === 'MEAN_REVERSION') return { text: `均值回归(Z≥${task.config.zScoreThreshold || 2.0})`, color: 'bg-cyan-100 text-cyan-700' };
     if (task.config.autoTarget === 'HOT_COLD_SWITCH') return { text: `冷热跟随(≥${task.config.hotThreshold || 65}%)`, color: 'bg-orange-100 text-orange-600' };
     if (task.config.autoTarget === 'ALTERNATING_FOLLOW') return { text: `交替跳选(${task.config.altPatternLength || 6}期${task.config.altReverseMode ? '反' : '顺'})`, color: 'bg-lime-100 text-lime-700' };
+    if (task.config.autoTarget === 'DUAL_MOMENTUM') return { text: `双重动量(N=${task.config.dualMomentumWindow || 15})`, color: 'bg-teal-100 text-teal-700' };
+    if (task.config.autoTarget === 'REVERSE_DRAGON_MARTINGALE') return { text: `反龙马丁(≥${task.config.rDragonMinStreak || 5}连)`, color: 'bg-rose-100 text-rose-700' };
 
     const ruleLabel = rule?.label || '未知规则';
     const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
@@ -1084,16 +1087,16 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     return true;
   }, [bets, config.odds]);
 
-  // 生成不重复的托管任务名：找当前任务列表中最小的未用编号
+  // 生成不重复的任务名：找当前任务列表中最小的未用编号
   const getNextTaskName = (existingTasks: AutoTask[]) => {
     const usedNums = new Set(
       existingTasks
-        .map(t => { const m = t.name.match(/^托管任务\s*(\d+)$/); return m ? parseInt(m[1]) : -1; })
+        .map(t => { const m = t.name.match(/^任务(\d+)$/); return m ? parseInt(m[1]) : -1; })
         .filter(n => n > 0)
     );
     let n = 1;
     while (usedNums.has(n)) n++;
-    return `托管任务 ${n}`;
+    return `任务${n}`;
   };
 
   const createTask = () => {
@@ -1144,6 +1147,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
   const toggleTask = (taskId: string) => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isActive: !t.isActive } : t));
+  };
+
+  const toggleTaskBetMode = (taskId: string) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, betMode: t.betMode === 'REAL' ? 'SIMULATED' : 'REAL' } : t));
   };
 
   const startAllTasks = useCallback(() => {
@@ -2423,6 +2430,54 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                }
              }
            }
+        } else if (task.config.autoTarget === 'DUAL_MOMENTUM') {
+           // v5.5: 双重动量确认 - 单双+大小同向才下注
+           const window = task.config.dualMomentumWindow || 15;
+           const threshold = (task.config.dualMomentumThreshold || 60) / 100;
+           if (ruleBlocks.length >= window) {
+             const recent = ruleBlocks.slice(0, window);
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+             // 单双动量
+             const oddCount = recent.filter(b => b.type === 'ODD').length;
+             const evenCount = window - oddCount;
+             const paritySignal: BetTarget | null = oddCount / window >= threshold ? 'ODD' : evenCount / window >= threshold ? 'EVEN' : null;
+             // 大小动量
+             const bigCount = recent.filter(b => b.sizeType === 'BIG').length;
+             const smallCount = window - bigCount;
+             const sizeSignal: BetTarget | null = bigCount / window >= threshold ? 'BIG' : smallCount / window >= threshold ? 'SMALL' : null;
+             // 两个维度都有信号才下注
+             if (paritySignal && sizeSignal) {
+               if (hasParity && ts.includes(paritySignal)) {
+                 type = 'PARITY'; target = paritySignal; shouldBet = true;
+               } else if (hasSize && ts.includes(sizeSignal)) {
+                 type = 'SIZE'; target = sizeSignal; shouldBet = true;
+               }
+             }
+           }
+        } else if (task.config.autoTarget === 'REVERSE_DRAGON_MARTINGALE') {
+           // v5.5: 反龙马丁 - 检测长龙后反向下注
+           const minDragon = task.config.rDragonMinStreak || 5;
+           if (ruleBlocks.length >= minDragon) {
+             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+             if (hasParity) {
+               const streak = calculateStreak(ruleBlocks, 'PARITY');
+               if (streak.count >= minDragon) {
+                 type = 'PARITY';
+                 target = streak.val === 'ODD' ? 'EVEN' : 'ODD';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+             if (!shouldBet && hasSize) {
+               const streak = calculateStreak(ruleBlocks, 'SIZE');
+               if (streak.count >= minDragon) {
+                 type = 'SIZE';
+                 target = streak.val === 'BIG' ? 'SMALL' : 'BIG';
+                 if (ts.includes(target)) shouldBet = true;
+               }
+             }
+           }
         } else if (ruleBlocks.length > 0) {
            // FOLLOW_LAST / REVERSE_LAST
            const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
@@ -2681,10 +2736,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* LEFT: TASK CREATOR (4 cols) */}
-        <div className="lg:col-span-4 space-y-6">
+      <div className="space-y-6">
+
+        {/* TOP: TASK CREATOR (full width) */}
+        <div className="space-y-6">
            <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-indigo-50">
               <div className="flex justify-between items-center mb-6">
                  <div className="flex items-center space-x-2">
@@ -2931,6 +2986,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MEAN_REVERSION', meanReversionWindow: draftConfig.meanReversionWindow || 30, zScoreThreshold: draftConfig.zScoreThreshold || 2.0})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MEAN_REVERSION' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>均值回归</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'HOT_COLD_SWITCH', hotColdWindow: draftConfig.hotColdWindow || 20, hotThreshold: draftConfig.hotThreshold || 65})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'HOT_COLD_SWITCH' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-400 border-gray-200'}`}>冷热跟随</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DUAL_MOMENTUM', dualMomentumWindow: draftConfig.dualMomentumWindow || 15, dualMomentumThreshold: draftConfig.dualMomentumThreshold || 60})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DUAL_MOMENTUM' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>双重动量</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_DRAGON_MARTINGALE', rDragonMinStreak: draftConfig.rDragonMinStreak || 5})} className={`py-2 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-gray-400 border-gray-200'}`}>反龙马丁</button>
                       </div>
                    </div>
 
@@ -3164,6 +3221,38 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          </div>
                          <p className="text-[9px] text-lime-700 font-semibold">
                            检测近期ABAB交替模式(≥{draftConfig.altPatternLength || 6}期/80%交替率)，{draftConfig.altReverseMode ? '反向下注' : '顺势预测下期'}
+                         </p>
+                      </div>
+                   )}
+
+                   {draftConfig.autoTarget === 'DUAL_MOMENTUM' && (
+                      <div className="bg-teal-50/50 p-3 rounded-xl border border-teal-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-teal-700 uppercase block">双重动量参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">观察窗口(期数)</label>
+                             <input type="number" min="5" max="50" step="1" value={draftConfig.dualMomentumWindow || 15} onChange={e => setDraftConfig({...draftConfig, dualMomentumWindow: Math.min(50, Math.max(5, parseInt(e.target.value) || 15))})} placeholder="15" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">单维动量阈值(%)</label>
+                             <input type="number" min="51" max="85" step="1" value={draftConfig.dualMomentumThreshold || 60} onChange={e => setDraftConfig({...draftConfig, dualMomentumThreshold: Math.min(85, Math.max(51, parseInt(e.target.value) || 60))})} placeholder="60" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-teal-700 font-semibold">
+                           单双和大小两个维度同时满足动量≥{draftConfig.dualMomentumThreshold || 60}%时才下注，双重过滤提升精准度
+                         </p>
+                      </div>
+                   )}
+
+                   {draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' && (
+                      <div className="bg-rose-50/50 p-3 rounded-xl border border-rose-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-rose-700 uppercase block">反龙马丁参数</span>
+                         <div>
+                           <label className="text-[9px] font-bold text-gray-400 block mb-0.5">触发反转的最小长龙(期)</label>
+                           <input type="number" min="3" max="15" step="1" value={draftConfig.rDragonMinStreak || 5} onChange={e => setDraftConfig({...draftConfig, rDragonMinStreak: Math.min(15, Math.max(3, parseInt(e.target.value) || 5))})} placeholder="5" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-rose-200 outline-none text-center" />
+                         </div>
+                         <p className="text-[9px] text-rose-700 font-semibold">
+                           连续≥{draftConfig.rDragonMinStreak || 5}期同向后反向下注；配合资金策略马丁格尔可放大反转收益
                          </p>
                       </div>
                    )}
@@ -3511,8 +3600,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
            </div>
         </div>
 
-        {/* CENTER/RIGHT: TASKS & MANUAL (8 cols) */}
-        <div className="lg:col-span-8 space-y-6">
+        {/* BOTTOM: RUNNING TASKS (full width) */}
+        <div className="space-y-6">
            
            {/* RUNNING TASKS GRID */}
            {tasks.length > 0 && (
@@ -3564,6 +3653,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         if (t.config.autoTarget === 'MEAN_REVERSION') return { text: `均值回归(Z≥${t.config.zScoreThreshold || 2.0})`, color: 'bg-cyan-100 text-cyan-700' };
                         if (t.config.autoTarget === 'HOT_COLD_SWITCH') return { text: `冷热跟随(≥${t.config.hotThreshold || 65}%)`, color: 'bg-orange-100 text-orange-600' };
                         if (t.config.autoTarget === 'ALTERNATING_FOLLOW') return { text: `交替跳选(${t.config.altPatternLength || 6}期${t.config.altReverseMode ? '反' : '顺'})`, color: 'bg-lime-100 text-lime-700' };
+                        if (t.config.autoTarget === 'DUAL_MOMENTUM') return { text: `双重动量(N=${t.config.dualMomentumWindow || 15})`, color: 'bg-teal-100 text-teal-700' };
+                        if (t.config.autoTarget === 'REVERSE_DRAGON_MARTINGALE') return { text: `反龙马丁(≥${t.config.rDragonMinStreak || 5}连)`, color: 'bg-rose-100 text-rose-700' };
 
                         const ruleLabel = r?.label || '未知规则';
                         const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
@@ -3613,78 +3704,116 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        'MULTI_MODEL_CONSENSUS':'多模型共识','DYNAMIC_CYCLE':'动态周期',
                        'MEAN_REVERSION':'均值回归','HOT_COLD_SWITCH':'冷热跟随',
                        'ALTERNATING_FOLLOW':'交替跳选',
+                       'DUAL_MOMENTUM':'双重动量','REVERSE_DRAGON_MARTINGALE':'反龙马丁',
                      };
                      const autoTargetShortLabel = atShort[task.config.autoTarget] || task.config.autoTarget;
 
+                     // 策略专项参数字符串
+                     const getStrategyParamStr = (t: AutoTask): string => {
+                       const c = t.config;
+                       switch (c.autoTarget) {
+                         case 'FOLLOW_RECENT_TREND':
+                         case 'FOLLOW_RECENT_TREND_REVERSE': return `窗口N=${c.trendWindow || 5}`;
+                         case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
+                         case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
+                         case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;
+                         case 'MULTI_MODEL_CONSENSUS': return `≥${c.consensusMinModels || 5}个模型共识`;
+                         case 'DYNAMIC_CYCLE': return `周期≤${c.cycleMaxLength || 8}期`;
+                         case 'MEAN_REVERSION': return `窗口${c.meanReversionWindow || 30}期 Z≥${c.zScoreThreshold || 2.0}`;
+                         case 'HOT_COLD_SWITCH': return `窗口${c.hotColdWindow || 20}期 热门≥${c.hotThreshold || 65}%`;
+                         case 'ALTERNATING_FOLLOW': return `交替${c.altPatternLength || 6}期 ${c.altReverseMode ? '反向' : '顺向'}`;
+                         case 'DRAGON_FOLLOW':
+                         case 'DRAGON_REVERSE':
+                         case 'BEAD_DRAGON_FOLLOW':
+                         case 'BEAD_DRAGON_REVERSE': return `触发连续=${c.minStreak || 3}`;
+                         case 'AI_MODEL_SELECT': return `${(c.selectedModels || []).length}个模型`;
+                         case 'AI_WINRATE_TRIGGER': return `触发${c.winRateTrigger || 30}% 停止${c.winRateStop || 60}%`;
+                         case 'DUAL_MOMENTUM': return `窗口${c.dualMomentumWindow || 15}期 阈值${c.dualMomentumThreshold || 60}%`;
+                         case 'REVERSE_DRAGON_MARTINGALE': return `龙长≥${c.rDragonMinStreak || 5}`;
+                         default: return `连续阈值=${c.minStreak || 1}`;
+                       }
+                     };
+                     const strategyParamStr = getStrategyParamStr(task);
+
                      return (
-                       <div key={task.id} className={`rounded-2xl p-4 border-2 transition-all relative overflow-hidden ${task.isActive ? 'bg-white border-indigo-500 shadow-md' : 'bg-gray-50 border-gray-200 grayscale-[0.5]'}`}>
-                          {/* 任务头：名称 + 开关 */}
-                          <div className="flex justify-between items-start mb-2">
+                       <div key={task.id} className={`rounded-2xl border-2 transition-all overflow-hidden ${task.isActive ? 'bg-white border-indigo-400 shadow-lg' : 'bg-gray-50 border-gray-200'}`}>
+                          {/* 任务头：运行状态色条 + 名称 + 开关 */}
+                          <div className={`px-4 py-3 flex justify-between items-center ${task.isActive ? 'bg-indigo-600' : 'bg-gray-200'}`}>
                              <div className="min-w-0 flex-1 mr-2">
-                                <h4 className="font-black text-sm text-gray-900 truncate">{task.name}</h4>
-                                <div className="flex items-center flex-wrap gap-1 mt-1">
-                                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${task.betMode === 'REAL' ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-blue-50 text-blue-500'}`}>
-                                      {task.betMode === 'REAL' ? '真实' : '模拟'}
-                                   </span>
+                                <h4 className={`font-black text-sm truncate ${task.isActive ? 'text-white' : 'text-gray-600'}`}>{task.name}</h4>
+                                <div className="flex items-center flex-wrap gap-1 mt-0.5">
                                    {task.blockRangeEnabled && task.blockStart && task.blockEnd && (
-                                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 font-bold">
+                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
                                        #{task.blockStart}~{task.blockEnd}
                                      </span>
                                    )}
                                    {task.timeRangeEnabled && task.timeStart && (
-                                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 font-bold">
+                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
                                        {new Date(task.timeStart).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}~{task.timeEnd ? new Date(task.timeEnd).toLocaleString('zh-CN', {hour:'2-digit',minute:'2-digit'}) : ''}
                                      </span>
                                    )}
                                    {task.dailyScheduleEnabled && task.dailyStart && task.dailyEnd && (
-                                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-bold">
+                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${task.isActive ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-600'}`}>
                                        每日{task.dailyStart}~{task.dailyEnd}
                                      </span>
                                    )}
                                 </div>
                              </div>
-                             <button onClick={() => toggleTask(task.id)} className={`p-2 rounded-full transition-colors flex-shrink-0 ${task.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}>
+                             <button onClick={() => toggleTask(task.id)} className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${task.isActive ? 'text-white/80 hover:text-white hover:bg-white/20' : 'text-gray-400 hover:bg-gray-300'}`}>
                                 {task.isActive ? <PauseCircle className="w-6 h-6" /> : <PlayCircle className="w-6 h-6" />}
                              </button>
                           </div>
 
+                          <div className="p-4 space-y-3">
                           {/* 配置参数面板 */}
-                          <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50/30 divide-y divide-indigo-100/60">
-                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-200">
+                            <div className="grid grid-cols-2 divide-x divide-gray-200">
                               <div className="px-2.5 py-1.5">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">下注规则</span>
-                                <span className="text-[10px] font-bold text-gray-800 truncate block">{rule?.label || '未知规则'}</span>
+                                <span className="text-[10px] font-bold text-gray-700 truncate block">{rule?.label || '未知规则'}</span>
                               </div>
                               <div className="px-2.5 py-1.5">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">资金策略</span>
                                 <span className="text-[10px] font-bold text-purple-700 block">{STRATEGY_LABELS[task.config.type]}</span>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                            <div className="grid grid-cols-2 divide-x divide-gray-200">
                               <div className="px-2.5 py-1.5">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">自动目标</span>
                                 <span className="text-[10px] font-bold text-indigo-700 block">{autoTargetShortLabel}</span>
                               </div>
                               <div className="px-2.5 py-1.5">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">目标选择</span>
-                                <span className="text-[10px] font-bold text-gray-800 block">{targetSelectStr || '—'}</span>
+                                <span className="text-[10px] font-bold text-gray-700 block">{targetSelectStr || '—'}</span>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 divide-x divide-indigo-100/60">
+                            <div className="grid grid-cols-2 divide-x divide-gray-200">
                               <div className="px-2.5 py-1.5">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">下注模式</span>
-                                <span className={`text-[10px] font-bold block ${task.betMode === 'REAL' ? 'text-red-600' : 'text-blue-600'}`}>{task.betMode === 'REAL' ? '真实下注' : '模拟下注'}</span>
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">策略参数</span>
+                                <span className="text-[10px] font-bold text-emerald-700 block truncate">{strategyParamStr}</span>
                               </div>
                               <div className="px-2.5 py-1.5">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide block">基础注额</span>
-                                <span className="text-[10px] font-bold text-gray-800 block">¥{task.baseBet}</span>
+                                <span className="text-[10px] font-bold text-gray-700 block">¥{task.baseBet}</span>
                               </div>
                             </div>
+                            <div className="px-2.5 py-1.5 flex items-center justify-between">
+                              <span className="text-[9px] font-black text-gray-400 uppercase tracking-wide">下注模式</span>
+                              <button
+                                onClick={() => toggleTaskBetMode(task.id)}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black border transition-colors ${task.betMode === 'REAL' ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${task.betMode === 'REAL' ? 'bg-red-500' : 'bg-blue-400'}`} />
+                                {task.betMode === 'REAL' ? '真实下注' : '模拟下注'}
+                                <ArrowRight className="w-2.5 h-2.5 opacity-60" />
+                              </button>
+                            </div>
                           </div>
-                          
-                          <div className="grid grid-cols-3 gap-2 mb-2 bg-gray-50/50 p-2 rounded-xl">
+
+                          {/* 运行数据 */}
+                          <div className="grid grid-cols-3 gap-2 bg-gray-50/80 p-2 rounded-xl border border-gray-100">
                              <div className="text-center">
-                                <span className="block text-[9px] text-gray-400 uppercase font-black">当前下注</span>
+                                <span className="block text-[9px] text-gray-400 uppercase font-black">当前注额</span>
                                 <span className="block text-sm font-black text-gray-800">${task.state.currentBetAmount}</span>
                              </div>
                              <div className="text-center border-l border-gray-200">
@@ -3696,43 +3825,35 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                                 <span className={`block text-sm font-black ${task.stats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{task.stats.profit >= 0 ? '+' : ''}{task.stats.profit.toFixed(0)}</span>
                              </div>
                           </div>
-                          
-                          <div className="grid grid-cols-3 gap-2 mb-2 bg-gray-50/50 p-2 rounded-xl">
-                             <div className="text-center flex items-center justify-center space-x-1">
-                                <TrendingUp className="w-3 h-3 text-green-500" />
-                                <div>
-                                    <span className="block text-[9px] text-gray-400 uppercase font-black">最高收益</span>
-                                    <span className="block text-xs font-black text-green-600">+{task.stats.maxProfit.toFixed(0)}</span>
-                                </div>
+
+                          <div className="grid grid-cols-3 gap-2 p-2 rounded-xl border border-gray-100">
+                             <div className="text-center">
+                                <span className="block text-[9px] text-gray-400 uppercase font-black">最高收益</span>
+                                <span className="block text-xs font-black text-green-600">+{task.stats.maxProfit.toFixed(0)}</span>
                              </div>
-                             <div className="text-center border-l border-gray-200 flex items-center justify-center space-x-1">
-                                <TrendingDown className="w-3 h-3 text-red-500" />
-                                <div>
-                                    <span className="block text-[9px] text-gray-400 uppercase font-black">最大亏损</span>
-                                    <span className="block text-xs font-black text-red-600">{task.stats.maxLoss.toFixed(0)}</span>
-                                </div>
+                             <div className="text-center border-l border-gray-200">
+                                <span className="block text-[9px] text-gray-400 uppercase font-black">最大亏损</span>
+                                <span className="block text-xs font-black text-red-500">{task.stats.maxLoss.toFixed(0)}</span>
                              </div>
-                             <div className="text-center border-l border-gray-200 flex items-center justify-center space-x-1">
-                                <Wallet className="w-3 h-3 text-blue-500" />
-                                <div>
-                                    <span className="block text-[9px] text-gray-400 uppercase font-black">累计下注</span>
-                                    <span className="block text-xs font-black text-blue-600">${(task.stats.totalBetAmount || 0).toLocaleString()}</span>
-                                </div>
+                             <div className="text-center border-l border-gray-200">
+                                <span className="block text-[9px] text-gray-400 uppercase font-black">累计下注</span>
+                                <span className="block text-xs font-black text-blue-600">${(task.stats.totalBetAmount || 0).toLocaleString()}</span>
                              </div>
                           </div>
-                          
-                          <div className="bg-red-50 rounded-xl p-2 flex items-center justify-center text-[10px] font-black text-red-500 mb-4 border border-red-100">
+
+                          <div className="bg-red-50 rounded-xl p-2 flex items-center justify-center text-[10px] font-black text-red-500 border border-red-100">
                              <ShieldAlert className="w-3 h-3 mr-1.5" />
                              最大回撤: -${task.stats.maxDrawdown.toFixed(0)} (-{taskDDRate.toFixed(1)}%)
                           </div>
 
-                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                             <span>W: {task.stats.wins} / L: {task.stats.losses}</span>
+                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 pt-1">
+                             <span className="font-black">W: <span className="text-green-600">{task.stats.wins}</span> / L: <span className="text-red-400">{task.stats.losses}</span></span>
                              <div className="flex items-center space-x-2">
-                               <button onClick={() => resetTask(task.id)} className="text-gray-300 hover:text-amber-500 flex items-center"><RefreshCw className="w-3 h-3 mr-0.5" /> 重置</button>
-                               {!task.isActive && <button onClick={() => editTask(task.id)} className="text-gray-300 hover:text-blue-500 flex items-center"><Settings2 className="w-3 h-3 mr-0.5" /> 编辑</button>}
-                               <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 flex items-center"><Trash2 className="w-3 h-3 mr-0.5" /> 删除</button>
+                               <button onClick={() => resetTask(task.id)} className="text-gray-300 hover:text-amber-500 flex items-center gap-0.5"><RefreshCw className="w-3 h-3" /> 重置</button>
+                               {!task.isActive && <button onClick={() => editTask(task.id)} className="text-gray-300 hover:text-blue-500 flex items-center gap-0.5"><Settings2 className="w-3 h-3" /> 编辑</button>}
+                               <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 flex items-center gap-0.5"><Trash2 className="w-3 h-3" /> 删除</button>
                              </div>
+                          </div>
                           </div>
                        </div>
                      );
@@ -3741,60 +3862,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
              </div>
            )}
 
-           {/* MANUAL BETTING CARD */}
-           <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-center mb-6">
-                 <div className="flex items-center space-x-2">
-                    <Gamepad2 className="w-5 h-5 text-indigo-600" />
-                    <h3 className="font-black text-gray-900">手动极速下注</h3>
-                 </div>
-                 <select 
-                    value={activeManualRuleId} 
-                    onChange={e => setActiveManualRuleId(e.target.value)}
-                    className="bg-gray-50 text-gray-600 rounded-xl px-3 py-1.5 text-xs font-black border border-gray-100 outline-none"
-                 >
-                    {rules.map(r => (
-                      <option key={r.id} value={r.id}>{r.label}</option>
-                    ))}
-                 </select>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <button 
-                   onClick={() => manualRule && placeBet(getNextTargetHeight(allBlocks[0].height, manualRule.value, manualRule.startBlock), 'PARITY', 'ODD', config.baseBet, 'MANUAL', manualRule)}
-                   className="py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black text-sm shadow-lg shadow-red-200 active:scale-95 transition-all flex flex-col items-center justify-center"
-                 >
-                    <span className="text-lg">单 (ODD)</span>
-                    <span className="text-[10px] opacity-80">1:{config.odds}</span>
-                 </button>
-                 <button 
-                   onClick={() => manualRule && placeBet(getNextTargetHeight(allBlocks[0].height, manualRule.value, manualRule.startBlock), 'PARITY', 'EVEN', config.baseBet, 'MANUAL', manualRule)}
-                   className="py-4 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-black text-sm shadow-lg shadow-teal-200 active:scale-95 transition-all flex flex-col items-center justify-center"
-                 >
-                    <span className="text-lg">双 (EVEN)</span>
-                    <span className="text-[10px] opacity-80">1:{config.odds}</span>
-                 </button>
-                 <button 
-                   onClick={() => manualRule && placeBet(getNextTargetHeight(allBlocks[0].height, manualRule.value, manualRule.startBlock), 'SIZE', 'BIG', config.baseBet, 'MANUAL', manualRule)}
-                   className="py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all flex flex-col items-center justify-center"
-                 >
-                    <span className="text-lg">大 (BIG)</span>
-                    <span className="text-[10px] opacity-80">1:{config.odds}</span>
-                 </button>
-                 <button 
-                   onClick={() => manualRule && placeBet(getNextTargetHeight(allBlocks[0].height, manualRule.value, manualRule.startBlock), 'SIZE', 'SMALL', config.baseBet, 'MANUAL', manualRule)}
-                   className="py-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-black text-sm shadow-lg shadow-indigo-200 active:scale-95 transition-all flex flex-col items-center justify-center"
-                 >
-                    <span className="text-lg">小 (SMALL)</span>
-                    <span className="text-[10px] opacity-80">1:{config.odds}</span>
-                 </button>
-              </div>
-              <p className="text-[10px] text-gray-400 font-bold mt-4 text-center">
-                 当前选中规则: {manualRule?.label} (步长: {manualRule?.value}) · 下注金额: ${config.baseBet}
-              </p>
-           </div>
-
-           {/* PENDING BETS LIST (RESTORED) */}
+           {/* PENDING BETS LIST */}
            {pendingBets.length > 0 && (
               <div className="space-y-3">
                  <div className="flex items-center space-x-2 text-xs font-black text-gray-400 uppercase px-2">
