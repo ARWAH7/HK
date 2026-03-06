@@ -656,10 +656,33 @@
 
     // ==================== 区块监控 ====================
     function startBlockMonitorV2() {
+      let monitorObserver = null;
+
       const updateStatus = () => {
         const b = SiteAdapter.getCurrentBlock();
         if (panel) { panel.currentPageBlock = b; panel.update(); }
       };
+
+      // MutationObserver: 区块DOM变化时立即触发 (与v1相同，消除显示延迟)
+      const setupObserver = () => {
+        const candidates = document.querySelectorAll('div[color="#fff"][font-size="24px"][font-weight="600"]');
+        if (candidates.length === 0) return;
+
+        const parents = new Set();
+        for (const el of candidates) {
+          const p = el.parentElement ? (el.parentElement.parentElement || el.parentElement) : null;
+          if (p) parents.add(p);
+        }
+
+        if (monitorObserver) monitorObserver.disconnect();
+        monitorObserver = new MutationObserver(updateStatus);
+        for (const p of parents) {
+          monitorObserver.observe(p, { childList: true, subtree: true, characterData: true });
+        }
+      };
+
+      setupObserver();
+      setTimeout(setupObserver, 5000);
       WSClient.onBlock(() => updateStatus());
       setInterval(updateStatus, 2000);
     }

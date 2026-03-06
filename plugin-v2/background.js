@@ -1,5 +1,6 @@
 /**
- * 哈希游戏下注执行器 - Background Service Worker v4.1
+ * 哈希游戏下注执行器 v2 - Background Service Worker
+ * WS触发极速投注版本
  * 负责:
  *   1. 跨标签页消息中转 (前端页面 ↔ 游戏页面)
  *   2. API地址持久化存储
@@ -31,8 +32,6 @@ async function sendToGameTab(message) {
 
 // 监听消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
-  // ========== 原有功能 ==========
 
   if (message.type === 'GET_API_URL') {
     chrome.storage.local.get(['apiUrl'], (result) => {
@@ -66,16 +65,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage(message).catch(() => {});
   }
 
-  // ========== 跨标签页中转: 前端 → 游戏页面 ==========
+  // ========== v2: WS触发极速投注 ==========
 
-  if (message.type === 'RELAY_BET') {
+  if (message.type === 'RELAY_BET_V2') {
     sendToGameTab({
-      type: 'EXECUTE_BET',
+      type: 'EXECUTE_BET_V2',
       detail: message.detail
     }).then(response => {
       sendResponse(response);
     });
-    return true; // 异步响应
+    return true;
   }
 
   if (message.type === 'RELAY_QUERY_READY') {
@@ -91,7 +90,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-
 });
 
 // 安装时初始化
@@ -100,5 +98,5 @@ chrome.runtime.onInstalled.addListener(() => {
     apiUrl: DEFAULT_API_URL,
     pluginState: null
   });
-  console.log('[HAXI Plugin] v4.1 插件已安装');
+  console.log('[HAXI Plugin v2] v2.0 WS触发极速投注插件已安装');
 });

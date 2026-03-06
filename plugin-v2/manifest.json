@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "哈希游戏下注执行器",
-  "version": "5.0.0",
-  "description": "配合HAXI前端托管系统的下注执行器 - 接收前端命令执行真实下注",
+  "name": "哈希游戏下注执行器 v2 (WS触发)",
+  "version": "2.0.0",
+  "description": "WS触发极速投注 - 上一区块结果到达时立即下注，目标执行时间≤80ms",
   "permissions": [
     "storage",
     "activeTab",
@@ -32,7 +32,7 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "哈希自动下注"
+    "default_title": "HAXI v2执行器"
   },
   "icons": {
     "16": "icons/icon16.png",
