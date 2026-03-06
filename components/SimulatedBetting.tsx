@@ -3438,25 +3438,25 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                   {/* 单一横向滚动容器：表头与数据行同步滚动 */}
                   <div className="overflow-x-auto">
                   {/* 表头 */}
-                  <div className="flex items-center px-3 py-2 bg-gray-700 text-[10px] font-black text-gray-200 uppercase min-w-[900px]">
+                  <div className="flex items-center px-3 py-2.5 bg-gray-700 text-[11px] font-black text-gray-200 uppercase min-w-[1020px]">
                     <span className="w-[88px] min-w-[88px]">任务备注</span>
                     <span className="w-[68px] min-w-[68px]">下注规则</span>
                     <span className="w-[52px] min-w-[52px]">资金策略</span>
                     <span className="w-[72px] min-w-[72px]">自动目标</span>
                     <span className="w-[52px] min-w-[52px]">目标选择</span>
                     <span className="flex-1 min-w-[120px]">策略参数</span>
-                    <span className="w-[48px] min-w-[48px]">基础注额</span>
-                    <span className="w-[48px] min-w-[48px]">下注模式</span>
-                    <span className="w-[48px] min-w-[48px]">当前注额</span>
-                    <span className="w-[32px] min-w-[32px]">连输</span>
-                    <span className="w-[52px] min-w-[52px]">盈亏</span>
-                    <span className="w-[52px] min-w-[52px]">最高收益</span>
-                    <span className="w-[52px] min-w-[52px]">最大亏损</span>
-                    <span className="w-[52px] min-w-[52px]">累计下注</span>
-                    <span className="w-[52px] min-w-[52px]">最大回撤</span>
-                    <span className="w-[30px] min-w-[30px] text-green-300">赢</span>
-                    <span className="w-[30px] min-w-[30px] text-red-300">输</span>
-                    <span className="ml-auto w-[80px] min-w-[80px] flex-shrink-0 text-right">操作</span>
+                    <span className="w-[52px] min-w-[52px]">基础注额</span>
+                    <span className="w-[52px] min-w-[52px]">下注模式</span>
+                    <span className="w-[52px] min-w-[52px]">当前注额</span>
+                    <span className="w-[36px] min-w-[36px]">连输</span>
+                    <span className="w-[56px] min-w-[56px]">盈亏</span>
+                    <span className="w-[56px] min-w-[56px]">最高收益</span>
+                    <span className="w-[56px] min-w-[56px]">最大亏损</span>
+                    <span className="w-[56px] min-w-[56px]">累计下注</span>
+                    <span className="w-[56px] min-w-[56px]">最大回撤</span>
+                    <span className="w-[32px] min-w-[32px] text-green-300">赢</span>
+                    <span className="w-[32px] min-w-[32px] text-red-300">输</span>
+                    <span className="w-[100px] min-w-[100px] flex-shrink-0 text-right">操作</span>
                   </div>
                    {tasks.map(task => {
                      const rule = rules.find(r => r.id === task.ruleId);
@@ -3559,7 +3559,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
                      const profit = task.stats.profit;
                      return (
-                       <div key={task.id} className={`flex items-center px-3 py-2 border-b border-gray-50 text-[11px] min-w-[900px] transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
+                       <div key={task.id} className={`flex items-center px-3 py-2.5 border-b border-gray-50 text-[11px] min-w-[1020px] transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
                          {/* 任务备注 */}
                          <div className="w-[88px] min-w-[88px] pr-1">
                            <span className={`font-black truncate block text-[11px] ${task.isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{task.name}</span>
@@ -3567,43 +3567,43 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            {(task.dailyScheduleEnabled && task.dailyStart) && <span className="text-[8px] text-green-500 font-bold block">{task.dailyStart}~{task.dailyEnd}</span>}
                          </div>
                          {/* 下注规则 */}
-                         <span className="w-[68px] min-w-[68px] text-[10px] text-gray-500 font-bold truncate pr-1">{rule?.label || '—'}</span>
+                         <span className="w-[68px] min-w-[68px] text-[11px] text-gray-500 font-bold truncate pr-1">{rule?.label || '—'}</span>
                          {/* 资金策略 */}
-                         <span className="w-[52px] min-w-[52px] text-[10px] text-purple-600 font-bold truncate pr-1">{STRATEGY_LABELS[task.config.type]}</span>
+                         <span className="w-[52px] min-w-[52px] text-[11px] text-purple-600 font-bold truncate pr-1">{STRATEGY_LABELS[task.config.type]}</span>
                          {/* 自动目标 */}
-                         <span className="w-[72px] min-w-[72px] text-[10px] text-indigo-600 font-bold truncate pr-1">{autoTargetShortLabel}</span>
+                         <span className="w-[72px] min-w-[72px] text-[11px] text-indigo-600 font-bold truncate pr-1">{autoTargetShortLabel}</span>
                          {/* 目标选择 */}
-                         <span className="w-[52px] min-w-[52px] text-[10px] text-gray-600 font-bold truncate pr-1">{targetSelectStr || '—'}</span>
+                         <span className="w-[52px] min-w-[52px] text-[11px] text-gray-600 font-bold truncate pr-1">{targetSelectStr || '—'}</span>
                          {/* 策略参数 */}
-                         <span className="flex-1 min-w-[120px] text-[10px] text-emerald-700 font-bold truncate pr-1">{strategyParamStr}</span>
+                         <span className="flex-1 min-w-[120px] text-[11px] text-emerald-700 font-bold truncate pr-1">{strategyParamStr}</span>
                          {/* 基础注额 */}
-                         <span className="w-[48px] min-w-[48px] text-[10px] text-gray-600 font-bold pr-1">¥{task.baseBet}</span>
+                         <span className="w-[52px] min-w-[52px] text-[11px] text-gray-600 font-bold pr-1">¥{task.baseBet}</span>
                          {/* 下注模式 */}
-                         <span className={`w-[48px] min-w-[48px] pr-1`}>
-                           <button onClick={() => toggleTaskBetMode(task.id)} className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${task.betMode === 'REAL' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-blue-50 text-blue-500 border-blue-200'}`}>
+                         <span className={`w-[52px] min-w-[52px] pr-1`}>
+                           <button onClick={() => toggleTaskBetMode(task.id)} className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${task.betMode === 'REAL' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-blue-50 text-blue-500 border-blue-200'}`}>
                              {task.betMode === 'REAL' ? '真实' : '模拟'}
                            </button>
                          </span>
                          {/* 当前注额 */}
-                         <span className="w-[48px] min-w-[48px] font-black text-gray-800 pr-1">{task.state.currentBetAmount}</span>
+                         <span className="w-[52px] min-w-[52px] font-black text-gray-800 pr-1">{task.state.currentBetAmount}</span>
                          {/* 连输 */}
-                         <span className={`w-[32px] min-w-[32px] font-black pr-1 ${task.state.consecutiveLosses > 0 ? 'text-red-500' : 'text-gray-400'}`}>{task.state.consecutiveLosses}</span>
+                         <span className={`w-[36px] min-w-[36px] font-black pr-1 ${task.state.consecutiveLosses > 0 ? 'text-red-500' : 'text-gray-400'}`}>{task.state.consecutiveLosses}</span>
                          {/* 盈亏 */}
-                         <span className={`w-[52px] min-w-[52px] font-black pr-1 ${profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400'}`}>{profit > 0 ? '+' : ''}{profit.toFixed(0)}</span>
+                         <span className={`w-[56px] min-w-[56px] font-black pr-1 ${profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400'}`}>{profit > 0 ? '+' : ''}{profit.toFixed(0)}</span>
                          {/* 最高收益 */}
-                         <span className="w-[52px] min-w-[52px] text-green-600 font-bold pr-1">+{task.stats.maxProfit.toFixed(0)}</span>
+                         <span className="w-[56px] min-w-[56px] text-green-600 font-bold pr-1">+{task.stats.maxProfit.toFixed(0)}</span>
                          {/* 最大亏损 */}
-                         <span className="w-[52px] min-w-[52px] text-red-500 font-bold pr-1">{task.stats.maxLoss.toFixed(0)}</span>
+                         <span className="w-[56px] min-w-[56px] text-red-500 font-bold pr-1">{task.stats.maxLoss.toFixed(0)}</span>
                          {/* 累计下注 */}
-                         <span className="w-[52px] min-w-[52px] text-blue-600 font-bold pr-1">{(task.stats.totalBetAmount || 0).toLocaleString()}</span>
+                         <span className="w-[56px] min-w-[56px] text-blue-600 font-bold pr-1">{(task.stats.totalBetAmount || 0).toLocaleString()}</span>
                          {/* 最大回撤 */}
-                         <span className="w-[52px] min-w-[52px] text-red-400 font-bold pr-1" title={`${taskDDRate.toFixed(1)}%`}>{task.stats.maxDrawdown.toFixed(0)}</span>
+                         <span className="w-[56px] min-w-[56px] text-red-400 font-bold pr-1" title={`${taskDDRate.toFixed(1)}%`}>{task.stats.maxDrawdown.toFixed(0)}</span>
                          {/* 赢 */}
-                         <span className="w-[30px] min-w-[30px] text-green-600 font-black">{task.stats.wins}</span>
+                         <span className="w-[32px] min-w-[32px] text-green-600 font-black">{task.stats.wins}</span>
                          {/* 输 */}
-                         <span className="w-[30px] min-w-[30px] text-red-500 font-black pr-1">{task.stats.losses}</span>
+                         <span className="w-[32px] min-w-[32px] text-red-500 font-black pr-2">{task.stats.losses}</span>
                          {/* 操作 */}
-                         <div className="ml-auto w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
+                         <div className="w-[100px] min-w-[100px] flex items-center gap-1 justify-end flex-shrink-0">
                            <button onClick={() => toggleTask(task.id)} className={`p-1 rounded-lg transition-colors ${task.isActive ? 'text-indigo-500 hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-100'}`} title={task.isActive ? '暂停' : '启动'}>
                              {task.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
                            </button>

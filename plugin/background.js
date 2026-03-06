@@ -91,6 +91,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  // ========== v2: WS触发极速投注 ==========
+
+  if (message.type === 'RELAY_BET_V2') {
+    sendToGameTab({
+      type: 'EXECUTE_BET_V2',
+      detail: message.detail
+    }).then(response => {
+      sendResponse(response);
+    });
+    return true;
+  }
 });
 
 // 安装时初始化

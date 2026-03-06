@@ -444,35 +444,76 @@
         return null;
       },
 
+      // 等待目标区块到达 (WS监听 + DOM轮询双保险)
+      _waitForBlock(targetBlock, timeoutMs) {
+        return new Promise(resolve => {
+          let done = false;
+          let pollId, timeoutId, wsListener;
+
+          const finish = (success) => {
+            if (done) return;
+            done = true;
+            clearInterval(pollId);
+            clearTimeout(timeoutId);
+            const idx = WSClient.listeners.indexOf(wsListener);
+            if (idx !== -1) WSClient.listeners.splice(idx, 1);
+            resolve(success);
+          };
+
+          // WS事件监听 (首选, 最快响应)
+          wsListener = (data) => {
+            if (data.height === targetBlock) finish(true);
+            else if (data.height > targetBlock) finish(false); // 已跳过目标区块
+          };
+          WSClient.listeners.push(wsListener);
+
+          // DOM轮询备用 (每200ms)
+          pollId = setInterval(() => {
+            const b = SiteAdapter.getCurrentBlock();
+            if (b === null) return;
+            if (b === targetBlock) finish(true);
+            else if (b > targetBlock) finish(false);
+          }, 200);
+
+          // 超时兜底
+          timeoutId = setTimeout(() => finish(false), timeoutMs);
+        });
+      },
+
       // 执行单笔下注 (含重试)
       async executeOne(cmd) {
-        // 区块高度验证: 仅在当前区块与指令区块一致时下注
+        // 区块高度验证 (支持等待下一个区块)
         if (cmd.blockHeight) {
           const currentBlock = SiteAdapter.getCurrentBlock();
-          if (currentBlock !== null && currentBlock !== cmd.blockHeight) {
-            const reason = currentBlock > cmd.blockHeight
-              ? `区块${cmd.blockHeight}已过(当前${currentBlock})，投注失败`
-              : `区块不匹配(目标${cmd.blockHeight} 当前${currentBlock})，投注失败`;
-            const failResult = {
-              taskId: cmd.taskId,
-              taskName: cmd.taskName,
-              blockHeight: cmd.blockHeight,
-              target: cmd.target,
-              amount: cmd.amount,
-              ruleId: cmd.ruleId,
-              success: false,
-              reason,
-              elapsed: 0,
-              timestamp: Date.now(),
-              balanceAfter: null
-            };
-            this.totalExecuted++;
-            this.totalFailed++;
-            this.results.unshift(failResult);
-            if (this.results.length > 50) this.results = this.results.slice(0, 50);
-            if (panel) panel.addLog(`[跳过] ${reason}`);
-            if (panel) panel.update();
-            return failResult;
+          if (currentBlock !== null) {
+            if (currentBlock > cmd.blockHeight) {
+              // 已经过了目标区块，直接失败
+              const reason = `区块${cmd.blockHeight}已过(当前${currentBlock})，投注失败`;
+              const failResult = { taskId: cmd.taskId, taskName: cmd.taskName, blockHeight: cmd.blockHeight, target: cmd.target, amount: cmd.amount, ruleId: cmd.ruleId, success: false, reason, elapsed: 0, timestamp: Date.now(), balanceAfter: null };
+              this.totalExecuted++; this.totalFailed++;
+              this.results.unshift(failResult);
+              if (this.results.length > 50) this.results = this.results.slice(0, 50);
+              if (panel) panel.addLog(`[跳过] ${reason}`);
+              if (panel) panel.update();
+              return failResult;
+            } else if (currentBlock < cmd.blockHeight) {
+              // 目标区块还未到达，等待
+              if (panel) panel.addLog(`[等待] 目标区块${cmd.blockHeight}，当前${currentBlock}，等待中...`);
+              const reached = await this._waitForBlock(cmd.blockHeight, 30000);
+              if (!reached) {
+                const reason = `等待区块${cmd.blockHeight}超时/已过，投注失败`;
+                const failResult = { taskId: cmd.taskId, taskName: cmd.taskName, blockHeight: cmd.blockHeight, target: cmd.target, amount: cmd.amount, ruleId: cmd.ruleId, success: false, reason, elapsed: 0, timestamp: Date.now(), balanceAfter: null };
+                this.totalExecuted++; this.totalFailed++;
+                this.results.unshift(failResult);
+                if (this.results.length > 50) this.results = this.results.slice(0, 50);
+                if (panel) panel.addLog(`[超时] ${reason}`);
+                if (panel) panel.update();
+                return failResult;
+              }
+              if (panel) panel.addLog(`[触发] 区块${cmd.blockHeight}到达，立即投注`);
+              // fall through to executeBet
+            }
+            // currentBlock === cmd.blockHeight: proceed immediately
           }
         }
 

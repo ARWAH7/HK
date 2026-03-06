@@ -25,6 +25,17 @@
       "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*.amazonaws.com/*",
+        "http://*.amazonaws.com/*",
+        "http://localhost:*/*",
+        "https://localhost:*/*"
+      ],
+      "js": ["content2.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "background": {
