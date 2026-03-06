@@ -487,7 +487,7 @@
         const betResult = {
           taskId: cmd.taskId,
           taskName: cmd.taskName,
-          blockHeight: cmd.blockHeight || SiteAdapter.getCurrentBlock(),
+          blockHeight: cmd.blockHeight ?? SiteAdapter.getCurrentBlock(),
           target: cmd.target,
           amount: cmd.amount,
           ruleId: cmd.ruleId,
@@ -571,6 +571,10 @@
             success: false,
             reason: err.message,
             taskId: cmd.taskId,
+            taskName: cmd.taskName,
+            blockHeight: cmd.blockHeight,
+            ruleId: cmd.ruleId,
+            betType: cmd.betType,
             target: cmd.target,
             amount: cmd.amount,
             timestamp: Date.now()

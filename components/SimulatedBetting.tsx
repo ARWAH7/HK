@@ -3435,8 +3435,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                 </div>
                 {/* ── 运行任务横向表格 ── */}
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  {/* 单一横向滚动容器：表头与数据行同步滚动 */}
+                  <div className="overflow-x-auto">
                   {/* 表头 */}
-                  <div className="flex items-center px-3 py-2 bg-gray-700 text-[10px] font-black text-gray-200 uppercase overflow-x-auto">
+                  <div className="flex items-center px-3 py-2 bg-gray-700 text-[10px] font-black text-gray-200 uppercase min-w-[900px]">
                     <span className="w-[88px] min-w-[88px]">任务备注</span>
                     <span className="w-[68px] min-w-[68px]">下注规则</span>
                     <span className="w-[52px] min-w-[52px]">资金策略</span>
@@ -3557,7 +3559,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
                      const profit = task.stats.profit;
                      return (
-                       <div key={task.id} className={`flex items-center px-3 py-2 border-b border-gray-50 text-[11px] overflow-x-auto transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
+                       <div key={task.id} className={`flex items-center px-3 py-2 border-b border-gray-50 text-[11px] min-w-[900px] transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
                          {/* 任务备注 */}
                          <div className="w-[88px] min-w-[88px] pr-1">
                            <span className={`font-black truncate block text-[11px] ${task.isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{task.name}</span>
@@ -3612,6 +3614,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        </div>
                      );
                    })}
+                  </div>{/* END scroll wrapper */}
                 </div>
              </div>
            )}
