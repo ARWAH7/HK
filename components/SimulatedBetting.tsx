@@ -3374,19 +3374,19 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         <input type="number" value={config.stopLossPercent || 0} onChange={e => setConfig({...config, stopLossPercent: parseFloat(e.target.value) || 0})} placeholder="0=关闭" className="w-full bg-red-50 text-red-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
                       </div>
                       {/* ── 添加 + 重置 按钮 ── */}
-                      <div className="flex gap-1.5 pt-1">
+                      <div className="flex flex-col gap-1.5 pt-1">
                         <button
                           onClick={createTask}
-                          className={`flex-1 py-2 text-white rounded-xl font-black text-xs flex items-center justify-center transition-all shadow-md active:scale-95 ${draftBetMode === 'REAL' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
+                          className={`w-full py-2 text-white rounded-xl font-black text-xs flex items-center justify-center transition-all shadow-md active:scale-95 ${draftBetMode === 'REAL' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
                         >
                           <Plus className="w-3.5 h-3.5 mr-1" /> {draftBetMode === 'REAL' ? '添加真实任务' : '添加托管任务'}
                         </button>
                         <button
                           type="button"
                           onClick={resetAccount}
-                          className="px-3 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-xl text-[10px] font-black flex items-center transition-colors"
+                          className="w-full py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-500 rounded-xl text-xs font-black flex items-center justify-center transition-colors"
                         >
-                          <Trash2 className="w-3 h-3 mr-1" /> 重置
+                          <Trash2 className="w-3.5 h-3.5 mr-1" /> 重置所有任务
                         </button>
                       </div>
                     </div>{/* END RIGHT COLUMN */}
@@ -3454,7 +3454,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                     <span className="w-[52px] min-w-[52px]">最大回撤</span>
                     <span className="w-[30px] min-w-[30px] text-green-300">赢</span>
                     <span className="w-[30px] min-w-[30px] text-red-300">输</span>
-                    <span className="w-[80px] min-w-[80px] flex-shrink-0 text-right">操作</span>
+                    <span className="ml-auto w-[80px] min-w-[80px] flex-shrink-0 text-right">操作</span>
                   </div>
                    {tasks.map(task => {
                      const rule = rules.find(r => r.id === task.ruleId);
@@ -3533,7 +3533,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        const c = t.config;
                        switch (c.autoTarget) {
                          case 'FOLLOW_RECENT_TREND':
-                         case 'FOLLOW_RECENT_TREND_REVERSE': return `窗口N=${c.trendWindow || 5}`;
+                         case 'FOLLOW_RECENT_TREND_REVERSE': return `窗口N=${c.trendWindow || 5} 起投${c.minStreak || 1}连`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
                          case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;
@@ -3545,7 +3545,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          case 'DRAGON_FOLLOW':
                          case 'DRAGON_REVERSE':
                          case 'BEAD_DRAGON_FOLLOW':
-                         case 'BEAD_DRAGON_REVERSE': return `触发连续=${c.minStreak || 3}`;
+                         case 'BEAD_DRAGON_REVERSE': return `起投${c.minStreak || 3}→止${c.dragonEndStreak || 5}连`;
                          case 'AI_MODEL_SELECT': return `${(c.selectedModels || []).length}个模型`;
                          case 'AI_WINRATE_TRIGGER': return `触发${c.winRateTrigger || 30}% 停止${c.winRateStop || 60}%`;
                          case 'DUAL_MOMENTUM': return `窗口${c.dualMomentumWindow || 15}期 阈值${c.dualMomentumThreshold || 60}%`;
@@ -3601,7 +3601,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          {/* 输 */}
                          <span className="w-[30px] min-w-[30px] text-red-500 font-black pr-1">{task.stats.losses}</span>
                          {/* 操作 */}
-                         <div className="w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
+                         <div className="ml-auto w-[80px] min-w-[80px] flex items-center gap-1 justify-end flex-shrink-0">
                            <button onClick={() => toggleTask(task.id)} className={`p-1 rounded-lg transition-colors ${task.isActive ? 'text-indigo-500 hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-100'}`} title={task.isActive ? '暂停' : '启动'}>
                              {task.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
                            </button>

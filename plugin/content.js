@@ -446,6 +446,36 @@
 
       // 执行单笔下注 (含重试)
       async executeOne(cmd) {
+        // 区块高度验证: 仅在当前区块与指令区块一致时下注
+        if (cmd.blockHeight) {
+          const currentBlock = SiteAdapter.getCurrentBlock();
+          if (currentBlock !== null && currentBlock !== cmd.blockHeight) {
+            const reason = currentBlock > cmd.blockHeight
+              ? `区块${cmd.blockHeight}已过(当前${currentBlock})，投注失败`
+              : `区块不匹配(目标${cmd.blockHeight} 当前${currentBlock})，投注失败`;
+            const failResult = {
+              taskId: cmd.taskId,
+              taskName: cmd.taskName,
+              blockHeight: cmd.blockHeight,
+              target: cmd.target,
+              amount: cmd.amount,
+              ruleId: cmd.ruleId,
+              success: false,
+              reason,
+              elapsed: 0,
+              timestamp: Date.now(),
+              balanceAfter: null
+            };
+            this.totalExecuted++;
+            this.totalFailed++;
+            this.results.unshift(failResult);
+            if (this.results.length > 50) this.results = this.results.slice(0, 50);
+            if (panel) panel.addLog(`[跳过] ${reason}`);
+            if (panel) panel.update();
+            return failResult;
+          }
+        }
+
         const t0 = Date.now();
         const result = await SiteAdapter.executeBet(cmd.target, cmd.amount);
         const elapsed = Date.now() - t0;
