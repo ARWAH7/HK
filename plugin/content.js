@@ -209,16 +209,27 @@
         return null;
       },
 
-      // 核心下注方法 (带重试: 永不放弃)
-      async executeBet(target, amount) {
+      // 核心下注方法 (带重试)
+      // targetBlock: 若传入，发现区块已过则立即中止重试
+      async executeBet(target, amount, targetBlock = null) {
         let lastError = '';
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-          const result = await this._singleAttempt(target, amount);
+          const result = await this._singleAttempt(target, amount, targetBlock);
           if (result.success) {
             return result;
           }
           lastError = result.reason;
+
+          // 如果目标区块已经过了，立即放弃剩余重试
+          if (targetBlock !== null) {
+            const b = SiteAdapter.getCurrentBlock();
+            if (b !== null && b > targetBlock) {
+              if (panel) panel.addLog(`[中止重试] 区块${targetBlock}已过(当前${b})`);
+              break;
+            }
+          }
+
           if (panel) panel.addLog(`[重试${attempt}/${MAX_RETRIES}] ${lastError}`);
 
           // 最后一次失败不等待
@@ -231,9 +242,9 @@
       },
 
       // 单次下注尝试 (快速执行: ~240ms)
-      async _singleAttempt(target, amount) {
+      async _singleAttempt(target, amount, targetBlock = null) {
         // 等待UI就绪
-        const uiReady = await this._waitForUIReady();
+        const uiReady = await this._waitForUIReady(targetBlock);
         if (!uiReady) return { success: false, reason: 'UI未就绪(输入框/确认按钮不存在)' };
 
         // 1. 重置
@@ -277,7 +288,8 @@
 
       // 等待游戏UI就绪 (输入框 + 确认按钮可用)
       // v5.1优化: 先做立即检测，减少不必要的轮询等待
-      async _waitForUIReady() {
+      // targetBlock: 若传入，一旦检测到当前区块超过目标则立即返回false（避免无效等待）
+      async _waitForUIReady(targetBlock = null) {
         // 立即检测：若UI已就绪直接返回（省去任何等待）
         const inputNow = this.findAmountInput();
         const confirmNow = this.findConfirmButton();
@@ -286,6 +298,11 @@
         const start = Date.now();
         while (Date.now() - start < UI_READY_TIMEOUT) {
           await delay(UI_READY_POLL);
+          // 若目标区块已过，立即中止等待
+          if (targetBlock !== null) {
+            const b = SiteAdapter.getCurrentBlock();
+            if (b !== null && b > targetBlock) return false;
+          }
           const input = this.findAmountInput();
           const confirm = this.findConfirmButton();
           if (input && confirm) return true;
@@ -518,7 +535,7 @@
         }
 
         const t0 = Date.now();
-        const result = await SiteAdapter.executeBet(cmd.target, cmd.amount);
+        const result = await SiteAdapter.executeBet(cmd.target, cmd.amount, cmd.blockHeight ?? null);
         const elapsed = Date.now() - t0;
 
         this.totalExecuted++;
