@@ -167,6 +167,7 @@ interface StrategyState {
   consecutiveLosses: number;
   currentBetAmount: number;
   sequenceIndex: number;
+  rawConsecutiveLosses: number; // 通用连输计数(不受策略类型影响，用于链式切换)
 }
 
 // NEW: Interface for a single auto-betting task
@@ -197,6 +198,12 @@ interface AutoTask {
   recentPredictions?: { correct: boolean; timestamp: number }[]; // 近期预测结果
   // v5.1-fix: 影子预测 - 持续追踪模型预测准确率（无论是否投注）
   shadowPrediction?: { targetHeight: number; prediction: BetTarget; betType: BetType };
+  // 链式切换配置
+  chainEnabled?: boolean;        // 启用链式切换
+  chainLossThreshold?: number;   // 连输N期触发切换到下一任务
+  chainProfitTarget?: number;    // 收益达到目标时返回上一任务(0=关闭)
+  chainNextTaskId?: string;      // 连输触发后切换到的任务ID
+  chainReturnTaskId?: string;    // 运行时: 收益达标时返回的任务ID(链式激活时设置)
   stats: {
     wins: number;
     losses: number;
@@ -736,6 +743,11 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   const [draftDailyScheduleEnabled, setDraftDailyScheduleEnabled] = useState(false);
   const [draftDailyStart, setDraftDailyStart] = useState('10:00');
   const [draftDailyEnd, setDraftDailyEnd] = useState('10:10');
+  // 链式切换 draft
+  const [draftChainEnabled, setDraftChainEnabled] = useState(false);
+  const [draftChainLossThreshold, setDraftChainLossThreshold] = useState(5);
+  const [draftChainProfitTarget, setDraftChainProfitTarget] = useState(100);
+  const [draftChainNextTaskId, setDraftChainNextTaskId] = useState('');
 
   const [showConfig, setShowConfig] = useState(true);
 
@@ -1114,7 +1126,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       state: {
         consecutiveLosses: 0,
         currentBetAmount: draftConfig.type === 'CUSTOM' && draftConfig.customSequence ? config.baseBet * draftConfig.customSequence[0] : config.baseBet,
-        sequenceIndex: 0
+        sequenceIndex: 0,
+        rawConsecutiveLosses: 0
       },
       isActive: false, // Default to paused
       betMode: draftBetMode,
@@ -1133,6 +1146,12 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       // v5.1: 胜率触发运行时
       aiWinRateActive: false,
       recentPredictions: [],
+      // 链式切换
+      chainEnabled: draftChainEnabled,
+      chainLossThreshold: draftChainLossThreshold,
+      chainProfitTarget: draftChainProfitTarget,
+      chainNextTaskId: draftChainNextTaskId || undefined,
+      chainReturnTaskId: undefined,
       stats: {
         wins: 0,
         losses: 0,
@@ -1183,7 +1202,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         state: {
           currentBetAmount: t.baseBet * ((t.config.type === 'CUSTOM' && t.config.customSequence) ? t.config.customSequence[0] : 1),
           consecutiveLosses: 0,
-          sequenceIndex: 0
+          sequenceIndex: 0,
+          rawConsecutiveLosses: 0
         },
         stats: { wins: 0, losses: 0, profit: 0, maxProfit: 0, maxLoss: 0, totalBetAmount: 0, peakProfit: 0, maxDrawdown: 0 }
       };
@@ -1208,6 +1228,11 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     setDraftDailyScheduleEnabled(!!task.dailyScheduleEnabled);
     setDraftDailyStart(task.dailyStart || '10:00');
     setDraftDailyEnd(task.dailyEnd || '10:10');
+    // 链式切换
+    setDraftChainEnabled(!!task.chainEnabled);
+    setDraftChainLossThreshold(task.chainLossThreshold ?? 5);
+    setDraftChainProfitTarget(task.chainProfitTarget ?? 100);
+    setDraftChainNextTaskId(task.chainNextTaskId || '');
     if (task.config.type === 'CUSTOM' && task.config.customSequence) {
       setCustomSeqText(task.config.customSequence.join(', '));
     }
@@ -1243,10 +1268,12 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       state: {
         currentBetAmount: t.baseBet * ((t.config.type === 'CUSTOM' && t.config.customSequence) ? t.config.customSequence[0] : 1),
         consecutiveLosses: 0,
-        sequenceIndex: 0
+        sequenceIndex: 0,
+        rawConsecutiveLosses: 0
       },
       aiWinRateActive: false,
       recentPredictions: [],
+      chainReturnTaskId: undefined,
       stats: { wins: 0, losses: 0, profit: 0, maxProfit: 0, maxLoss: 0, totalBetAmount: 0, peakProfit: 0, maxDrawdown: 0 }
     })));
     setGlobalMetrics({ peakBalance: defaults.initialBalance, maxDrawdown: 0 });
@@ -1418,10 +1445,12 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        currentBetAmount = task.baseBet;
                   }
                   // Apply State
-                  task.state = { currentBetAmount: Math.floor(currentBetAmount), consecutiveLosses, sequenceIndex };
+                  const rawConsLosses = isWin ? 0 : ((task.state.rawConsecutiveLosses || 0) + 1);
+                  task.state = { currentBetAmount: Math.floor(currentBetAmount), consecutiveLosses, sequenceIndex, rawConsecutiveLosses: rawConsLosses };
               } else {
                   // For AI_KELLY, we can reset state to base just to keep it clean, though we calculate dynamically
-                  task.state = { currentBetAmount: task.baseBet, consecutiveLosses: 0, sequenceIndex: 0 };
+                  const rawConsLosses = isWin ? 0 : ((task.state.rawConsecutiveLosses || 0) + 1);
+                  task.state = { currentBetAmount: task.baseBet, consecutiveLosses: 0, sequenceIndex: 0, rawConsecutiveLosses: rawConsLosses };
               }
             }
           }
@@ -1431,6 +1460,50 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       }
       return bet;
     });
+
+    // 1.5 链式切换检查: 在结算统计后、下注前处理任务切换
+    {
+      type ChainSwitch = { deactivateId: string; activateId: string; setReturnTaskId?: string; clearReturnTaskId?: boolean };
+      const chainSwitches: ChainSwitch[] = [];
+      nextTasks.forEach(task => {
+        if (!task.isActive || !task.chainEnabled) return;
+        const rawLosses = task.state.rawConsecutiveLosses || 0;
+        // 连输触发: 切换到下一任务
+        if (task.chainNextTaskId && task.chainLossThreshold && rawLosses >= task.chainLossThreshold) {
+          chainSwitches.push({
+            deactivateId: task.id,
+            activateId: task.chainNextTaskId,
+            setReturnTaskId: task.chainReturnTaskId || task.id // 下一任务返回到当前任务(或当前任务的前驱)
+          });
+        }
+        // 收益目标触发: 返回上一任务
+        if (task.chainReturnTaskId && task.chainProfitTarget && task.chainProfitTarget > 0) {
+          if (task.stats.profit >= task.chainProfitTarget) {
+            chainSwitches.push({
+              deactivateId: task.id,
+              activateId: task.chainReturnTaskId,
+              clearReturnTaskId: true
+            });
+          }
+        }
+      });
+      chainSwitches.forEach(({ deactivateId, activateId, setReturnTaskId, clearReturnTaskId }) => {
+        const deactIdx = nextTasks.findIndex(t => t.id === deactivateId);
+        const actIdx = nextTasks.findIndex(t => t.id === activateId);
+        if (deactIdx !== -1) {
+          nextTasks[deactIdx] = { ...nextTasks[deactIdx], isActive: false };
+          tasksChanged = true;
+        }
+        if (actIdx !== -1) {
+          nextTasks[actIdx] = {
+            ...nextTasks[actIdx],
+            isActive: true,
+            chainReturnTaskId: clearReturnTaskId ? undefined : (setReturnTaskId || nextTasks[actIdx].chainReturnTaskId)
+          };
+          tasksChanged = true;
+        }
+      });
+    }
 
     // 2. PROCESS ACTIVE TASKS (PLACE NEW BETS)
     const finalBets = [...updatedBets];
@@ -2954,6 +3027,37 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                         )}
                       </div>
 
+                      {/* 链式切换 */}
+                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-600">⛓ 链式切换</span>
+                          <button onClick={() => setDraftChainEnabled(!draftChainEnabled)} className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftChainEnabled ? 'bg-orange-500' : 'bg-gray-300'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform duration-200 ${draftChainEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        {draftChainEnabled && (
+                          <div className="mt-1.5 space-y-1.5">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-500 w-14 shrink-0">切换到</span>
+                              <select value={draftChainNextTaskId} onChange={e => setDraftChainNextTaskId(e.target.value)} className="flex-1 text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white outline-none">
+                                <option value="">-- 选择任务 --</option>
+                                {tasks.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-500 w-14 shrink-0">连输触发</span>
+                              <input type="number" min={1} value={draftChainLossThreshold} onChange={e => setDraftChainLossThreshold(Number(e.target.value))} className="w-12 text-[10px] border border-gray-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
+                              <span className="text-[9px] text-gray-400">期连输切换</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-500 w-14 shrink-0">收益返回</span>
+                              <input type="number" min={0} value={draftChainProfitTarget} onChange={e => setDraftChainProfitTarget(Number(e.target.value))} className="w-12 text-[10px] border border-gray-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
+                              <span className="text-[9px] text-gray-400">元(0=关)</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                     </div>{/* END LEFT */}
 
                     {/* ═══ MIDDLE COLUMN (3/7) ═══ */}
@@ -3580,6 +3684,16 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            <span className={`font-black truncate block text-[11px] ${task.isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{task.name}</span>
                            {(task.blockRangeEnabled && task.blockStart) && <span className="text-[8px] text-indigo-400 font-bold block truncate">#{task.blockStart}~{task.blockEnd}</span>}
                            {(task.dailyScheduleEnabled && task.dailyStart) && <span className="text-[8px] text-green-500 font-bold block">{task.dailyStart}~{task.dailyEnd}</span>}
+                           {task.chainEnabled && task.chainNextTaskId && !task.chainReturnTaskId && (
+                             <span className="text-[8px] bg-orange-100 text-orange-600 font-bold px-0.5 rounded block truncate">
+                               ⛓{tasks.find(t => t.id === task.chainNextTaskId)?.name || '?'}
+                             </span>
+                           )}
+                           {task.chainReturnTaskId && (
+                             <span className="text-[8px] bg-orange-200 text-orange-700 font-bold px-0.5 rounded block truncate">
+                               ↩链中
+                             </span>
+                           )}
                          </div>
                          {/* 下注规则 */}
                          <span className="w-[68px] min-w-[68px] text-[11px] text-gray-500 font-bold truncate pr-1">{rule?.label || '—'}</span>
