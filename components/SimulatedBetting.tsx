@@ -199,11 +199,13 @@ interface AutoTask {
   // v5.1-fix: 影子预测 - 持续追踪模型预测准确率（无论是否投注）
   shadowPrediction?: { targetHeight: number; prediction: BetTarget; betType: BetType };
   // 链式切换配置
-  chainEnabled?: boolean;        // 启用链式切换
-  chainLossThreshold?: number;   // 连输N期触发切换到下一任务
-  chainProfitTarget?: number;    // 收益达到目标时返回上一任务(0=关闭)
-  chainNextTaskId?: string;      // 连输触发后切换到的任务ID
-  chainReturnTaskId?: string;    // 运行时: 收益达标时返回的任务ID(链式激活时设置)
+  chainEnabled?: boolean;              // 启用链式切换
+  chainLossThreshold?: number;         // 连输N期触发切换到下一任务
+  chainNextTaskId?: string;            // 连输触发后切换到的任务ID
+  // 链式切换运行时状态 (自动计算，无需用户配置)
+  chainReturnTaskId?: string;          // 运行时: 收益达标时返回的任务ID(链式激活时设置)
+  chainReturnProfitTarget?: number;    // 运行时: 需要赚回的金额 = 前驱任务激活时的亏损额
+  chainActivatedProfit?: number;       // 运行时: 本任务被链式激活时的盈利快照(用于计算增量)
   stats: {
     wins: number;
     losses: number;
@@ -746,7 +748,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   // 链式切换 draft
   const [draftChainEnabled, setDraftChainEnabled] = useState(false);
   const [draftChainLossThreshold, setDraftChainLossThreshold] = useState(5);
-  const [draftChainProfitTarget, setDraftChainProfitTarget] = useState(100);
   const [draftChainNextTaskId, setDraftChainNextTaskId] = useState('');
 
   const [showConfig, setShowConfig] = useState(true);
@@ -1149,9 +1150,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       // 链式切换
       chainEnabled: draftChainEnabled,
       chainLossThreshold: draftChainLossThreshold,
-      chainProfitTarget: draftChainProfitTarget,
       chainNextTaskId: draftChainNextTaskId || undefined,
       chainReturnTaskId: undefined,
+      chainReturnProfitTarget: undefined,
+      chainActivatedProfit: undefined,
       stats: {
         wins: 0,
         losses: 0,
@@ -1231,7 +1233,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     // 链式切换
     setDraftChainEnabled(!!task.chainEnabled);
     setDraftChainLossThreshold(task.chainLossThreshold ?? 5);
-    setDraftChainProfitTarget(task.chainProfitTarget ?? 100);
     setDraftChainNextTaskId(task.chainNextTaskId || '');
     if (task.config.type === 'CUSTOM' && task.config.customSequence) {
       setCustomSeqText(task.config.customSequence.join(', '));
@@ -1274,6 +1275,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       aiWinRateActive: false,
       recentPredictions: [],
       chainReturnTaskId: undefined,
+      chainReturnProfitTarget: undefined,
+      chainActivatedProfit: undefined,
       stats: { wins: 0, losses: 0, profit: 0, maxProfit: 0, maxLoss: 0, totalBetAmount: 0, peakProfit: 0, maxDrawdown: 0 }
     })));
     setGlobalMetrics({ peakBalance: defaults.initialBalance, maxDrawdown: 0 });
@@ -1462,44 +1465,77 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     });
 
     // 1.5 链式切换检查: 在结算统计后、下注前处理任务切换
+    // 规则:
+    //   连输触发条件: rawConsecutiveLosses >= chainLossThreshold 且 stats.profit < 0 (亏损状态)
+    //   切换时自动计算收益目标 = |当前任务亏损额|，存入下一任务的 chainReturnProfitTarget
+    //   返回条件: (stats.profit - chainActivatedProfit) >= chainReturnProfitTarget
     {
-      type ChainSwitch = { deactivateId: string; activateId: string; setReturnTaskId?: string; clearReturnTaskId?: boolean };
+      type ChainSwitch = {
+        deactivateId: string;
+        activateId: string;
+        lossAmount: number;      // 前驱任务亏损额，作为下一任务收益目标
+        returnToId: string;      // 下一任务运行完后返回的任务ID
+        returnToProfitTarget?: number; // 若下一任务已有returnProfitTarget(继续传递链)
+      } | {
+        deactivateId: string;
+        activateId: string;
+        returnProfit: true;      // 标记为收益返回操作(清除链状态)
+      };
       const chainSwitches: ChainSwitch[] = [];
       nextTasks.forEach(task => {
-        if (!task.isActive || !task.chainEnabled) return;
+        if (!task.isActive) return;
         const rawLosses = task.state.rawConsecutiveLosses || 0;
-        // 连输触发: 切换到下一任务
-        if (task.chainNextTaskId && task.chainLossThreshold && rawLosses >= task.chainLossThreshold) {
-          chainSwitches.push({
-            deactivateId: task.id,
-            activateId: task.chainNextTaskId,
-            setReturnTaskId: task.chainReturnTaskId || task.id // 下一任务返回到当前任务(或当前任务的前驱)
-          });
+        // 连输触发: 必须亏损状态才切换
+        if (task.chainEnabled && task.chainNextTaskId && task.chainLossThreshold) {
+          if (rawLosses >= task.chainLossThreshold && task.stats.profit < 0) {
+            chainSwitches.push({
+              deactivateId: task.id,
+              activateId: task.chainNextTaskId,
+              lossAmount: Math.abs(task.stats.profit),
+              returnToId: task.id
+            });
+          }
         }
-        // 收益目标触发: 返回上一任务
-        if (task.chainReturnTaskId && task.chainProfitTarget && task.chainProfitTarget > 0) {
-          if (task.stats.profit >= task.chainProfitTarget) {
+        // 收益目标触发: 赚回前驱任务的亏损额则返回
+        if (task.chainReturnTaskId && task.chainReturnProfitTarget != null) {
+          const gained = task.stats.profit - (task.chainActivatedProfit ?? 0);
+          if (gained >= task.chainReturnProfitTarget) {
             chainSwitches.push({
               deactivateId: task.id,
               activateId: task.chainReturnTaskId,
-              clearReturnTaskId: true
+              returnProfit: true
             });
           }
         }
       });
-      chainSwitches.forEach(({ deactivateId, activateId, setReturnTaskId, clearReturnTaskId }) => {
-        const deactIdx = nextTasks.findIndex(t => t.id === deactivateId);
-        const actIdx = nextTasks.findIndex(t => t.id === activateId);
+      chainSwitches.forEach(sw => {
+        const deactIdx = nextTasks.findIndex(t => t.id === sw.deactivateId);
+        const actIdx = nextTasks.findIndex(t => t.id === sw.activateId);
         if (deactIdx !== -1) {
           nextTasks[deactIdx] = { ...nextTasks[deactIdx], isActive: false };
           tasksChanged = true;
         }
         if (actIdx !== -1) {
-          nextTasks[actIdx] = {
-            ...nextTasks[actIdx],
-            isActive: true,
-            chainReturnTaskId: clearReturnTaskId ? undefined : (setReturnTaskId || nextTasks[actIdx].chainReturnTaskId)
-          };
+          if ('returnProfit' in sw) {
+            // 返回前驱任务: 清除链状态，重置连输计数
+            nextTasks[actIdx] = {
+              ...nextTasks[actIdx],
+              isActive: true,
+              chainReturnTaskId: undefined,
+              chainReturnProfitTarget: undefined,
+              chainActivatedProfit: undefined,
+              state: { ...nextTasks[actIdx].state, rawConsecutiveLosses: 0 }
+            };
+          } else {
+            // 切换到下一任务: 设置收益目标和返回路径
+            nextTasks[actIdx] = {
+              ...nextTasks[actIdx],
+              isActive: true,
+              chainReturnTaskId: sw.returnToId,
+              chainReturnProfitTarget: sw.lossAmount,
+              chainActivatedProfit: nextTasks[actIdx].stats.profit
+            };
+          }
           tasksChanged = true;
         }
       });
@@ -3047,12 +3083,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             <div className="flex items-center gap-1">
                               <span className="text-[10px] text-gray-500 w-14 shrink-0">连输触发</span>
                               <input type="number" min={1} value={draftChainLossThreshold} onChange={e => setDraftChainLossThreshold(Number(e.target.value))} className="w-12 text-[10px] border border-gray-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
-                              <span className="text-[9px] text-gray-400">期连输切换</span>
+                              <span className="text-[9px] text-gray-400">期且亏损时切换</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-gray-500 w-14 shrink-0">收益返回</span>
-                              <input type="number" min={0} value={draftChainProfitTarget} onChange={e => setDraftChainProfitTarget(Number(e.target.value))} className="w-12 text-[10px] border border-gray-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
-                              <span className="text-[9px] text-gray-400">元(0=关)</span>
+                            <div className="text-[9px] text-orange-500 bg-orange-50 rounded px-1.5 py-1 leading-relaxed">
+                              收益目标自动计算：切换时等于前任务亏损额，赚回即返回
                             </div>
                           </div>
                         )}
@@ -3690,8 +3724,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                              </span>
                            )}
                            {task.chainReturnTaskId && (
-                             <span className="text-[8px] bg-orange-200 text-orange-700 font-bold px-0.5 rounded block truncate">
-                               ↩链中
+                             <span className="text-[8px] bg-orange-200 text-orange-700 font-bold px-0.5 rounded block truncate" title={`需赚回¥${task.chainReturnProfitTarget?.toFixed(0)}，当前+${Math.max(0, task.stats.profit - (task.chainActivatedProfit ?? 0)).toFixed(0)}`}>
+                               ↩链中¥{task.chainReturnProfitTarget?.toFixed(0)}
                              </span>
                            )}
                          </div>
