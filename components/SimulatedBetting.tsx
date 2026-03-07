@@ -180,6 +180,7 @@ interface AutoTask {
   state: StrategyState; // Runtime state (martingale progress, etc.)
   isActive: boolean;
   betMode: 'SIMULATED' | 'REAL'; // 模拟下注 or 真实下注(通过插件)
+  pluginVersion?: 'v1' | 'v2';   // 真实下注插件版本 (v1=标准, v2=WS极速)
   // 区块范围限制
   blockRangeEnabled?: boolean;
   blockStart?: number;
@@ -718,6 +719,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   const [savedSequences, setSavedSequences] = useState<{name: string; sequence: number[]}[]>([]);
   const [seqSaveName, setSeqSaveName] = useState('');
   const [draftBetMode, setDraftBetMode] = useState<'SIMULATED' | 'REAL'>('SIMULATED');
+  const [draftPluginVersion, setDraftPluginVersion] = useState<'v1' | 'v2'>('v1');
   const [pluginReady, setPluginReady] = useState(false);
   const [realBalance, setRealBalance] = useState<number | null>(null);
   const [realBalancePeak, setRealBalancePeak] = useState<number | null>(null);
@@ -798,6 +800,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     document.addEventListener('haxi-ready-result', onReady);
     document.addEventListener('haxi-balance-result', onBalance);
     document.addEventListener('haxi-bet-result', onBetResult);
+    document.addEventListener('haxi-bet-result-v2', onBetResult);
     // 首次检测 + 定期检测
     checkPlugin();
     const timer = setInterval(checkPlugin, 10000);
@@ -811,6 +814,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       document.removeEventListener('haxi-ready-result', onReady);
       document.removeEventListener('haxi-balance-result', onBalance);
       document.removeEventListener('haxi-bet-result', onBetResult);
+      document.removeEventListener('haxi-bet-result-v2', onBetResult);
       clearInterval(timer);
       clearInterval(balanceTimer);
     };
@@ -1114,6 +1118,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       },
       isActive: false, // Default to paused
       betMode: draftBetMode,
+      pluginVersion: draftBetMode === 'REAL' ? draftPluginVersion : 'v1',
       // 区块范围
       blockRangeEnabled: draftBlockRangeEnabled,
       blockStart: draftBlockStart,
@@ -1193,6 +1198,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     setDraftRuleId(task.ruleId);
     setDraftConfig({ ...task.config });
     setDraftBetMode(task.betMode || 'SIMULATED');
+    setDraftPluginVersion(task.pluginVersion || 'v1');
     setDraftBlockRangeEnabled(!!task.blockRangeEnabled);
     setDraftBlockStart(task.blockStart || 0);
     setDraftBlockEnd(task.blockEnd || 0);
@@ -1447,19 +1453,19 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         totalAmount: number;
         blockHeight: number;
         betType: BetType;
-        contributions: { taskId: string; taskName: string; amount: number; ruleId: string; }[];
+        contributions: { taskId: string; taskName: string; amount: number; ruleId: string; pluginVersion: 'v1' | 'v2'; }[];
       }>();
-      const addToRealBetMerge = (target: BetTarget, amount: number, blockHeight: number, betType: BetType, taskId: string, taskName: string, ruleId: string) => {
+      const addToRealBetMerge = (target: BetTarget, amount: number, blockHeight: number, betType: BetType, taskId: string, taskName: string, ruleId: string, pluginVersion: 'v1' | 'v2' = 'v1') => {
         const existing = realBetMergeMap.get(target);
         if (existing) {
           existing.totalAmount += amount;
-          existing.contributions.push({ taskId, taskName, amount, ruleId });
+          existing.contributions.push({ taskId, taskName, amount, ruleId, pluginVersion });
         } else {
           realBetMergeMap.set(target, {
             totalAmount: amount,
             blockHeight,
             betType,
-            contributions: [{ taskId, taskName, amount, ruleId }]
+            contributions: [{ taskId, taskName, amount, ruleId, pluginVersion }]
           });
         }
       };
@@ -1606,7 +1612,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       };
                       // 真实下注: 加入合并队列 (GLOBAL_AI_FULL_SCAN)
                       if (task.betMode === 'REAL') {
-                        addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id);
+                        addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id, task.pluginVersion || 'v1');
                       }
 
                       currentBalance -= amount;
@@ -1716,7 +1722,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                      };
                      // 真实下注: 加入合并队列 (GLOBAL_TREND/BEAD_DRAGON)
                      if (task.betMode === 'REAL') {
-                       addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id);
+                       addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id, task.pluginVersion || 'v1');
                      }
 
                      currentBalance -= amount;
@@ -1819,7 +1825,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                   strategyLabel: task.config.type, balanceAfter: 0
                 };
                 if (task.betMode === 'REAL') {
-                  addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id);
+                  addToRealBetMerge(bestCandidate.target, amount, bestCandidate.height, bestCandidate.type, task.id, task.name, bestCandidate.rule!.id, task.pluginVersion || 'v1');
                 }
                 currentBalance -= amount;
                 finalBets.unshift(newBet);
@@ -1897,7 +1903,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               strategyLabel: task.config.type, balanceAfter: 0
             };
             if (task.betMode === 'REAL') {
-              addToRealBetMerge(ft, amount, nextHeight, ftType, task.id, task.name, rule.id);
+              addToRealBetMerge(ft, amount, nextHeight, ftType, task.id, task.name, rule.id, task.pluginVersion || 'v1');
             }
             currentBalance -= amount;
             finalBets.unshift(newBet);
@@ -2555,7 +2561,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
            // 真实下注: 加入合并队列
            if (task.betMode === 'REAL') {
-             addToRealBetMerge(target, amount, nextHeight, type, task.id, task.name, rule.id);
+             addToRealBetMerge(target, amount, nextHeight, type, task.id, task.name, rule.id, task.pluginVersion || 'v1');
            }
 
            currentBalance -= amount;
@@ -2567,7 +2573,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       // 合并后一次性派发真实下注命令到插件
       // 多个任务的同目标下注合并为单次执行 (例: 3个任务投单¥1+¥2+¥5 → 合并一次投单¥8)
       realBetMergeMap.forEach((merged, target) => {
-        document.dispatchEvent(new CustomEvent('haxi-real-bet', {
+        // 若任意贡献任务使用V2插件，则派发v2事件；否则派发v1事件
+        const isV2 = merged.contributions.some(c => c.pluginVersion === 'v2');
+        const eventName = isV2 ? 'haxi-real-bet-v2' : 'haxi-real-bet';
+        document.dispatchEvent(new CustomEvent(eventName, {
           detail: {
             taskId: merged.contributions.length === 1 ? merged.contributions[0].taskId : 'merged',
             taskName: merged.contributions.length === 1
@@ -2887,10 +2896,16 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                           <button onClick={() => setDraftBetMode('REAL')} className={`flex-1 text-[11px] font-black transition-all ${draftBetMode === 'REAL' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-gray-600'}`}>真实</button>
                         </div>
                         {draftBetMode === 'REAL' && (
-                          <div className={`mt-1 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
-                            {pluginReady ? <>已连接{realBalance != null && <span className="ml-1 text-green-700">¥{realBalance.toFixed(2)}</span>}</> : '插件未连接'}
-                          </div>
+                          <>
+                            <div className="flex gap-1 mt-1">
+                              <button onClick={() => setDraftPluginVersion('v1')} className={`flex-1 py-0.5 rounded-lg text-[10px] font-black transition-all ${draftPluginVersion === 'v1' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>V1插件</button>
+                              <button onClick={() => setDraftPluginVersion('v2')} className={`flex-1 py-0.5 rounded-lg text-[10px] font-black transition-all ${draftPluginVersion === 'v2' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>V2(WS极速)</button>
+                            </div>
+                            <div className={`mt-1 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center ${pluginReady ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${pluginReady ? 'bg-green-500' : 'bg-red-400'}`}></span>
+                              {pluginReady ? <>已连接{realBalance != null && <span className="ml-1 text-green-700">¥{realBalance.toFixed(2)}</span>}</> : '插件未连接'}
+                            </div>
+                          </>
                         )}
                       </div>
                       {/* 区块范围 */}
@@ -3580,8 +3595,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <span className="w-[52px] min-w-[52px] text-[11px] text-gray-600 font-bold pr-1">¥{task.baseBet}</span>
                          {/* 下注模式 */}
                          <span className={`w-[52px] min-w-[52px] pr-1`}>
-                           <button onClick={() => toggleTaskBetMode(task.id)} className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${task.betMode === 'REAL' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-blue-50 text-blue-500 border-blue-200'}`}>
-                             {task.betMode === 'REAL' ? '真实' : '模拟'}
+                           <button onClick={() => toggleTaskBetMode(task.id)} className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${task.betMode === 'REAL' && task.pluginVersion === 'v2' ? 'bg-amber-50 text-amber-600 border-amber-200' : task.betMode === 'REAL' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-blue-50 text-blue-500 border-blue-200'}`}>
+                             {task.betMode === 'REAL' && task.pluginVersion === 'v2' ? 'V2极速' : task.betMode === 'REAL' ? '真实' : '模拟'}
                            </button>
                          </span>
                          {/* 当前注额 */}

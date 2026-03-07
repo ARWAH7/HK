@@ -315,13 +315,13 @@
             resolve(success);
           };
 
-          // 检查是否WS已经有该区块数据
-          const existing = WSClient.blocks.find(b => b.height === targetBlock);
+          // 检查是否WS已经有该区块数据 (Number()防止字符串vs数字类型不匹配)
+          const existing = WSClient.blocks.find(b => Number(b.height) === Number(targetBlock));
           if (existing) { resolve(true); return; }
 
           wsListener = (data) => {
-            if (data.height === targetBlock) finish(true);
-            else if (data.height > targetBlock) finish(false); // 跳过了目标区块
+            if (Number(data.height) === Number(targetBlock)) finish(true);
+            else if (Number(data.height) > Number(targetBlock)) finish(false); // 跳过了目标区块
           };
           WSClient.listeners.push(wsListener);
 
