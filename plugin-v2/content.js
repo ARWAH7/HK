@@ -75,7 +75,7 @@
     console.log('[HAXI执行器 v2] 游戏页面 WS触发模式');
 
     // ==================== 常量 ====================
-    const STEP_DELAY_V2 = 10;         // 步骤间隔 (v1=20ms, v2=10ms)
+    const STEP_DELAY_V2 = 20;         // 步骤间隔 (与v1相同, 给React时间重渲染)
     const POST_CONFIRM_V2 = 60;       // 确认后等待 (v1=80ms, v2=60ms)
     const TARGET_TEXT = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
 
@@ -134,10 +134,24 @@
       findBetButton(target) {
         const targetText = TARGET_TEXT[target];
         if (!targetText) return null;
+        // 主选择器: 属性匹配 (与v1相同)
         const btns = document.querySelectorAll('div[width="40px"][height="40px"][font-size="40px"][font-weight="600"]');
         for (const btn of btns) {
-          if (btn.textContent.trim() === targetText) return btn;
+          if (btn.textContent.trim() === targetText) {
+            const parent = btn.parentElement;
+            return (parent && parent.getAttribute('height') === '110px') ? parent : btn;
+          }
         }
+        // 颜色属性备选 (v1 fallback)
+        const colorAttr = (target === 'ODD' || target === 'BIG') ? '#24b3a2' : '#ff3636';
+        const colorBtns = document.querySelectorAll(`div[color="${colorAttr}"][font-size="40px"]`);
+        for (const btn of colorBtns) {
+          if (btn.textContent.trim() === targetText) {
+            const parent = btn.parentElement;
+            return (parent && parent.getAttribute('height') === '110px') ? parent : btn;
+          }
+        }
+        // 兜底: 类名匹配
         const allDivs = document.querySelectorAll('div.sc-bdVaJa');
         for (const div of allDivs) {
           if (div.textContent.trim() === targetText) return div;
@@ -146,23 +160,41 @@
       },
 
       findAmountInput() {
+        // 主选择器: placeholder匹配 (与v1相同，实际DOM结构)
+        const byPlaceholder = document.querySelector('input[placeholder="输入金额"]');
+        if (byPlaceholder && byPlaceholder.offsetParent !== null) return byPlaceholder;
+        // 属性备选
         const inputs = document.querySelectorAll('input[type="number"], input[inputmode="decimal"]');
         for (const inp of inputs) {
           if (inp.offsetParent !== null && !inp.disabled && !inp.readOnly) return inp;
         }
+        // 类名兜底
         const byClass = document.querySelector('.sc-Rmtcm input, .fQggfv input');
         if (byClass && byClass.offsetParent !== null) return byClass;
         return null;
       },
 
       findConfirmButton() {
-        const candidates = document.querySelectorAll('div[width="100%"][height="40px"][font-size="14px"][font-weight="600"]');
-        for (const el of candidates) {
-          if (el.textContent.trim() === '确认') return el;
+        const TEXTS = ['确定', '确认'];
+        // 主选择器: v1的span结构 (实际DOM)
+        const spans = document.querySelectorAll('span[color="white"][font-size="14px"]');
+        for (const s of spans) {
+          if (TEXTS.includes(s.textContent.trim())) return s.parentElement || s;
         }
+        // 类名备选 span
+        for (const cls of ['span.NYRcS', 'span.sc-gzVnrw']) {
+          const el = document.querySelector(cls);
+          if (el && TEXTS.includes(el.textContent.trim())) return el.parentElement || el;
+        }
+        // div属性备选
+        const divs = document.querySelectorAll('div[width="100%"][height="40px"][font-size="14px"]');
+        for (const el of divs) {
+          if (TEXTS.includes(el.textContent.trim())) return el;
+        }
+        // 兜底
         const allDivs = document.querySelectorAll('div.sc-bdVaJa');
         for (const div of allDivs) {
-          if (div.textContent.trim() === '确认') return div;
+          if (TEXTS.includes(div.textContent.trim())) return div;
         }
         return null;
       },
@@ -174,7 +206,12 @@
         targetBtn.click();
         await delay(STEP_DELAY_V2);
 
-        const input = this.findAmountInput();
+        // 首次尝试找输入框，若未就绪等待30ms再试一次
+        let input = this.findAmountInput();
+        if (!input) {
+          await delay(30);
+          input = this.findAmountInput();
+        }
         if (!input) return { success: false, reason: '未找到金额输入框' };
 
         const nativeSetter = Object.getOwnPropertyDescriptor(
@@ -697,12 +734,23 @@
             chrome.runtime.sendMessage({ type: 'GET_API_URL' }, (response) => {
               if (response && response.apiUrl) {
                 API_URL = response.apiUrl;
+                // 从API URL推导默认WS地址
                 try {
                   const u = new URL(API_URL);
                   WS_URL = `ws://${u.hostname}:8080`;
                 } catch (e) { /* keep default */ }
               }
-              resolve();
+              // 读取用户自定义WS配置 (wsUrl + wsApiKey)
+              chrome.storage.local.get(['wsUrl', 'wsApiKey'], (wsConfig) => {
+                if (wsConfig.wsUrl && wsConfig.wsUrl.trim()) {
+                  const base = wsConfig.wsUrl.trim();
+                  const key = (wsConfig.wsApiKey || '').trim();
+                  WS_URL = key
+                    ? `${base}${base.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`
+                    : base;
+                }
+                resolve();
+              });
             });
           } else { resolve(); }
         } catch (e) { resolve(); }

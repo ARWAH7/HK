@@ -69,7 +69,25 @@
       <label>API 地址</label>
       <input type="text" id="apiUrl" placeholder="http://localhost:3001">
     </div>
-    <button class="btn btn-save" id="saveBtn">保存设置</button>
+    <button class="btn btn-save" id="saveBtn">保存API设置</button>
+  </div>
+
+  <div class="section">
+    <h3>WebSocket 极速配置</h3>
+    <div class="stat-row" style="margin-bottom:8px">
+      <span class="stat-label">WS状态</span>
+      <span class="stat-value" id="wsStatus">--</span>
+    </div>
+    <div class="input-group">
+      <label>WS 地址 (留空使用API推导)</label>
+      <input type="text" id="wsUrl" placeholder="ws://localhost:8080">
+    </div>
+    <div class="input-group">
+      <label>API Key (可选，作为 ?key= 参数)</label>
+      <input type="text" id="wsApiKey" placeholder="留空则不添加认证">
+    </div>
+    <button class="btn btn-save" id="saveWsBtn">保存WS配置</button>
+    <p style="font-size:10px;color:#94a3b8;margin-top:6px">重新载入游戏页后生效 · 填入后拼接为 ws://...?key=xxx</p>
   </div>
 
   <p class="info">前端托管系统控制下注 · 插件负责执行</p>
