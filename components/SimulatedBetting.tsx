@@ -734,6 +734,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   const [realBalancePeak, setRealBalancePeak] = useState<number | null>(null);
   const [realBalanceMaxDD, setRealBalanceMaxDD] = useState(0);
   const [chartFilterTaskId, setChartFilterTaskId] = useState<string>('all');
+  const [chainConfigOpenId, setChainConfigOpenId] = useState<string | null>(null);
   // 区块范围 draft
   const [draftBlockRangeEnabled, setDraftBlockRangeEnabled] = useState(false);
   const [draftBlockStart, setDraftBlockStart] = useState<number>(0);
@@ -745,10 +746,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
   const [draftDailyScheduleEnabled, setDraftDailyScheduleEnabled] = useState(false);
   const [draftDailyStart, setDraftDailyStart] = useState('10:00');
   const [draftDailyEnd, setDraftDailyEnd] = useState('10:10');
-  // 链式切换 draft
-  const [draftChainEnabled, setDraftChainEnabled] = useState(false);
-  const [draftChainLossThreshold, setDraftChainLossThreshold] = useState(5);
-  const [draftChainNextTaskId, setDraftChainNextTaskId] = useState('');
 
   const [showConfig, setShowConfig] = useState(true);
 
@@ -1147,10 +1144,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       // v5.1: 胜率触发运行时
       aiWinRateActive: false,
       recentPredictions: [],
-      // 链式切换
-      chainEnabled: draftChainEnabled,
-      chainLossThreshold: draftChainLossThreshold,
-      chainNextTaskId: draftChainNextTaskId || undefined,
+      // 链式切换 (在任务表格中配置)
+      chainEnabled: false,
+      chainLossThreshold: 5,
+      chainNextTaskId: undefined,
       chainReturnTaskId: undefined,
       chainReturnProfitTarget: undefined,
       chainActivatedProfit: undefined,
@@ -1230,10 +1227,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     setDraftDailyScheduleEnabled(!!task.dailyScheduleEnabled);
     setDraftDailyStart(task.dailyStart || '10:00');
     setDraftDailyEnd(task.dailyEnd || '10:10');
-    // 链式切换
-    setDraftChainEnabled(!!task.chainEnabled);
-    setDraftChainLossThreshold(task.chainLossThreshold ?? 5);
-    setDraftChainNextTaskId(task.chainNextTaskId || '');
     if (task.config.type === 'CUSTOM' && task.config.customSequence) {
       setCustomSeqText(task.config.customSequence.join(', '));
     }
@@ -2936,7 +2929,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       <div className="grid grid-cols-2 gap-2">
                          <div className="bg-gray-50 px-3 py-2 rounded-xl">
                             <span className="text-[10px] font-bold text-gray-400 block mb-1">倍投系数</span>
-                            <input type="number" step="0.1" value={draftConfig.multiplier} onChange={e => setDraftConfig({...draftConfig, multiplier: parseFloat(e.target.value)})} className="w-full bg-white rounded-lg px-2 py-1 text-xs font-black text-center" />
+                            <input type="number" step="0.1" value={draftConfig.multiplier ?? 2} onChange={e => setDraftConfig({...draftConfig, multiplier: parseFloat(e.target.value)})} className="w-full bg-white rounded-lg px-2 py-1 text-xs font-black text-center" />
                          </div>
                          <div className="bg-gray-50 px-3 py-2 rounded-xl">
                             <span className="text-[10px] font-bold text-gray-400 block mb-1">跟投期数</span>
@@ -2947,7 +2940,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    {draftConfig.type === 'DALEMBERT' && (
                       <div className="bg-gray-50 px-3 py-2 rounded-xl flex justify-between items-center">
                          <span className="text-[10px] font-bold text-gray-500">升降步长</span>
-                         <input type="number" value={draftConfig.step} onChange={e => setDraftConfig({...draftConfig, step: parseFloat(e.target.value)})} className="w-20 bg-white rounded-lg px-2 py-1 text-xs font-black text-center" />
+                         <input type="number" value={draftConfig.step ?? 1} onChange={e => setDraftConfig({...draftConfig, step: parseFloat(e.target.value)})} className="w-20 bg-white rounded-lg px-2 py-1 text-xs font-black text-center" />
                       </div>
                    )}
                    {draftConfig.type === 'CUSTOM' && (
@@ -3059,35 +3052,6 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                           <div className="mt-1.5 grid grid-cols-2 gap-1">
                             <input type="time" step="60" value={draftDailyStart} onChange={e => setDraftDailyStart(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-bold border border-gray-200 outline-none appearance-none" />
                             <input type="time" step="60" value={draftDailyEnd} onChange={e => setDraftDailyEnd(e.target.value)} className="w-full bg-white rounded-lg px-1.5 py-1 text-[10px] font-bold border border-gray-200 outline-none appearance-none" />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 链式切换 */}
-                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-gray-600">⛓ 链式切换</span>
-                          <button onClick={() => setDraftChainEnabled(!draftChainEnabled)} className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 overflow-hidden ${draftChainEnabled ? 'bg-orange-500' : 'bg-gray-300'}`}>
-                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform duration-200 ${draftChainEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                          </button>
-                        </div>
-                        {draftChainEnabled && (
-                          <div className="mt-1.5 space-y-1.5">
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-gray-500 w-14 shrink-0">切换到</span>
-                              <select value={draftChainNextTaskId} onChange={e => setDraftChainNextTaskId(e.target.value)} className="flex-1 text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white outline-none">
-                                <option value="">-- 选择任务 --</option>
-                                {tasks.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
-                              </select>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-gray-500 w-14 shrink-0">连输触发</span>
-                              <input type="number" min={1} value={draftChainLossThreshold} onChange={e => setDraftChainLossThreshold(Number(e.target.value))} className="w-12 text-[10px] border border-gray-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
-                              <span className="text-[9px] text-gray-400">期且亏损时切换</span>
-                            </div>
-                            <div className="text-[9px] text-orange-500 bg-orange-50 rounded px-1.5 py-1 leading-relaxed">
-                              收益目标自动计算：切换时等于前任务亏损额，赚回即返回
-                            </div>
                           </div>
                         )}
                       </div>
@@ -3609,7 +3573,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                     <span className="w-[56px] min-w-[56px]">最大回撤</span>
                     <span className="w-[32px] min-w-[32px] text-green-300">赢</span>
                     <span className="w-[32px] min-w-[32px] text-red-300">输</span>
-                    <span className="w-[100px] min-w-[100px] flex-shrink-0 text-right">操作</span>
+                    <span className="w-[120px] min-w-[120px] flex-shrink-0 text-right">操作</span>
                   </div>
                    {tasks.map(task => {
                      const rule = rules.find(r => r.id === task.ruleId);
@@ -3712,7 +3676,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
                      const profit = task.stats.profit;
                      return (
-                       <div key={task.id} className={`flex items-center px-3 py-2.5 border-b border-gray-50 text-[11px] min-w-[1020px] transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
+                      <React.Fragment key={task.id}>
+                       <div className={`flex items-center px-3 py-2.5 border-b border-gray-50 text-[11px] min-w-[1020px] transition-colors ${task.isActive ? 'bg-indigo-50/40 border-l-[3px] border-l-indigo-400' : 'border-l-[3px] border-l-transparent hover:bg-gray-50/60'}`}>
                          {/* 任务备注 */}
                          <div className="w-[88px] min-w-[88px] pr-1">
                            <span className={`font-black truncate block text-[11px] ${task.isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{task.name}</span>
@@ -3766,7 +3731,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          {/* 输 */}
                          <span className="w-[32px] min-w-[32px] text-red-500 font-black pr-2">{task.stats.losses}</span>
                          {/* 操作 */}
-                         <div className="w-[100px] min-w-[100px] flex items-center gap-1 justify-end flex-shrink-0">
+                         <div className="w-[120px] min-w-[120px] flex items-center gap-1 justify-end flex-shrink-0">
+                           <button onClick={() => setChainConfigOpenId(chainConfigOpenId === task.id ? null : task.id)} className={`p-1 rounded-lg transition-colors text-[11px] ${task.chainEnabled ? 'text-orange-500 bg-orange-50 hover:bg-orange-100' : 'text-gray-400 hover:bg-gray-100'}`} title="链式切换配置">⛓</button>
                            <button onClick={() => toggleTask(task.id)} className={`p-1 rounded-lg transition-colors ${task.isActive ? 'text-indigo-500 hover:bg-indigo-100' : 'text-gray-400 hover:bg-gray-100'}`} title={task.isActive ? '暂停' : '启动'}>
                              {task.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
                            </button>
@@ -3775,6 +3741,36 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            <button onClick={() => deleteTask(task.id)} className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"><Trash2 className="w-4 h-4" /></button>
                          </div>
                        </div>
+                       {/* 链式切换内联配置行 */}
+                       {chainConfigOpenId === task.id && (
+                         <div className="flex items-center flex-wrap gap-x-3 gap-y-1 px-3 py-2 bg-orange-50/80 border-b border-orange-100 min-w-[1020px]">
+                           <span className="text-[10px] font-bold text-orange-700">⛓ 链式切换</span>
+                           <button
+                             onClick={() => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, chainEnabled: !t.chainEnabled } : t))}
+                             className={`text-[10px] px-2 py-0.5 rounded font-black transition-colors ${task.chainEnabled ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
+                             {task.chainEnabled ? '已启用' : '关闭'}
+                           </button>
+                           <span className="text-[10px] text-gray-600">连输时切换到</span>
+                           <select
+                             value={task.chainNextTaskId || ''}
+                             onChange={e => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, chainNextTaskId: e.target.value || undefined } : t))}
+                             className="text-[10px] border border-orange-200 rounded px-1 py-0.5 bg-white outline-none min-w-[80px]">
+                             <option value="">-- 选择任务 --</option>
+                             {tasks.filter(t => t.id !== task.id).map(t => (
+                               <option key={t.id} value={t.id}>{t.name}</option>
+                             ))}
+                           </select>
+                           <span className="text-[10px] text-gray-600">连输</span>
+                           <input
+                             type="number" min={1}
+                             value={task.chainLossThreshold || 5}
+                             onChange={e => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, chainLossThreshold: Number(e.target.value) || 5 } : t))}
+                             className="w-10 text-[10px] border border-orange-200 rounded px-1 py-0.5 text-center bg-white outline-none" />
+                           <span className="text-[10px] text-gray-500">期且亏损时切换</span>
+                           <span className="text-[9px] text-orange-400">收益目标自动计算 = 切换时前任务亏损额，赚回即返回</span>
+                         </div>
+                       )}
+                      </React.Fragment>
                      );
                    })}
                   </div>{/* END scroll wrapper */}

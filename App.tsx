@@ -783,12 +783,8 @@ const App: React.FC = () => {
     // 清理函数
     return () => {
       isCleanedUp = true; // 标记已清理，阻止后续重连
-      if (ws) {
-        try {
-          ws.close();
-        } catch (error) {
-          // StrictMode 下可能在连接建立前关闭，忽略此警告
-        }
+      if (ws && ws.readyState !== WebSocket.CONNECTING) {
+        try { ws.close(); } catch (error) { /* ignore */ }
       }
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
