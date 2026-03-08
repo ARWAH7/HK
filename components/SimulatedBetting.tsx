@@ -167,7 +167,8 @@ interface StrategyState {
   consecutiveLosses: number;
   currentBetAmount: number;
   sequenceIndex: number;
-  rawConsecutiveLosses: number; // 通用连输计数(不受策略类型影响，用于链式切换)
+  rawConsecutiveLosses: number;     // 通用连输计数(不受策略类型影响，用于链式切换)
+  rawConsecutiveLossAmount: number; // 当前连输期内累计亏损额(赢则归零，用于链式返回目标)
 }
 
 // NEW: Interface for a single auto-betting task
@@ -1442,11 +1443,13 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                   }
                   // Apply State
                   const rawConsLosses = isWin ? 0 : ((task.state.rawConsecutiveLosses || 0) + 1);
-                  task.state = { currentBetAmount: Math.floor(currentBetAmount), consecutiveLosses, sequenceIndex, rawConsecutiveLosses: rawConsLosses };
+                  const rawConsLossAmt = isWin ? 0 : ((task.state.rawConsecutiveLossAmount || 0) + bet.amount);
+                  task.state = { currentBetAmount: Math.floor(currentBetAmount), consecutiveLosses, sequenceIndex, rawConsecutiveLosses: rawConsLosses, rawConsecutiveLossAmount: rawConsLossAmt };
               } else {
                   // For AI_KELLY, we can reset state to base just to keep it clean, though we calculate dynamically
                   const rawConsLosses = isWin ? 0 : ((task.state.rawConsecutiveLosses || 0) + 1);
-                  task.state = { currentBetAmount: task.baseBet, consecutiveLosses: 0, sequenceIndex: 0, rawConsecutiveLosses: rawConsLosses };
+                  const rawConsLossAmt = isWin ? 0 : ((task.state.rawConsecutiveLossAmount || 0) + bet.amount);
+                  task.state = { currentBetAmount: task.baseBet, consecutiveLosses: 0, sequenceIndex: 0, rawConsecutiveLosses: rawConsLosses, rawConsecutiveLossAmount: rawConsLossAmt };
               }
             }
           }
@@ -1484,7 +1487,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
             chainSwitches.push({
               deactivateId: task.id,
               activateId: task.chainNextTaskId,
-              lossAmount: Math.max(0, -task.stats.profit), // 亏损额(盈利时为0)
+              lossAmount: task.state.rawConsecutiveLossAmount || 0, // 本次连输N期的累计亏损额
               returnToId: task.id
             });
           }
@@ -1517,7 +1520,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               chainReturnTaskId: undefined,
               chainReturnProfitTarget: undefined,
               chainActivatedProfit: undefined,
-              state: { ...nextTasks[actIdx].state, rawConsecutiveLosses: 0 }
+              state: { ...nextTasks[actIdx].state, rawConsecutiveLosses: 0, rawConsecutiveLossAmount: 0 }
             };
           } else {
             // 切换到下一任务: 设置收益目标和返回路径
