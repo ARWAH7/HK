@@ -1513,14 +1513,18 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         }
         if (actIdx !== -1) {
           if ('returnProfit' in sw) {
-            // 返回前驱任务: 清除链状态，重置连输计数
+            // 返回前驱任务: 若该任务本身还欠上一级任务收益(中间任务)，保留返回义务并更新基准；
+            // 若是链头任务(无进一步返回义务)，清除全部链状态
+            const returningTask = nextTasks[actIdx];
+            const isMidChain = !!returningTask.chainReturnTaskId; // 还欠上级任务的返回
             nextTasks[actIdx] = {
-              ...nextTasks[actIdx],
+              ...returningTask,
               isActive: true,
-              chainReturnTaskId: undefined,
-              chainReturnProfitTarget: undefined,
-              chainActivatedProfit: undefined,
-              state: { ...nextTasks[actIdx].state, rawConsecutiveLosses: 0, rawConsecutiveLossAmount: 0 }
+              chainReturnTaskId: isMidChain ? returningTask.chainReturnTaskId : undefined,
+              chainReturnProfitTarget: isMidChain ? returningTask.chainReturnProfitTarget : undefined,
+              // 更新盈利基准为当前盈亏，让"再赚N元"从当前位置开始计算
+              chainActivatedProfit: isMidChain ? returningTask.stats.profit : undefined,
+              state: { ...returningTask.state, rawConsecutiveLosses: 0, rawConsecutiveLossAmount: 0 }
             };
           } else {
             // 切换到下一任务: 设置收益目标和返回路径
