@@ -29,6 +29,19 @@ async function sendToGameTab(message) {
   }
 }
 
+// 向所有游戏标签页广播下注命令，返回第一个成功结果
+// 不兼容的页面会静默返回 { skipped: true }，由此函数过滤
+async function sendToAllGameTabs(message) {
+  const tabs = await chrome.tabs.query({ url: ['*://*.amazonaws.com/*'] });
+  if (tabs.length === 0) return { success: false, reason: '未找到游戏页面标签页 - 请先打开游戏页面' };
+  const results = await Promise.all(
+    tabs.map(tab => chrome.tabs.sendMessage(tab.id, message).catch(e => ({ success: false, reason: e.message })))
+  );
+  return results.find(r => r && r.success)
+      || results.find(r => r && !r.skipped)
+      || { success: false, reason: '未找到兼容的游戏页面' };
+}
+
 // 监听消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
@@ -69,7 +82,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ========== 跨标签页中转: 前端 → 游戏页面 ==========
 
   if (message.type === 'RELAY_BET') {
-    sendToGameTab({
+    sendToAllGameTabs({
       type: 'EXECUTE_BET',
       detail: message.detail
     }).then(response => {

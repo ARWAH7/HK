@@ -368,6 +368,18 @@
 
       // v2 executeOne: 当currentBlock < targetBlock时，等WS收到(targetBlock-1)再投注
       async executeOne(cmd) {
+        // 页面投注类型兼容性检查: 不匹配则静默跳过，不产生[失败]日志
+        const gameType = detectGameType();
+        if (gameType !== null) {
+          const isSizeBet = cmd.target === 'BIG' || cmd.target === 'SMALL';
+          const isParityBet = cmd.target === 'ODD' || cmd.target === 'EVEN';
+          if ((gameType === 'PARITY' && isSizeBet) || (gameType === 'SIZE' && isParityBet)) {
+            return { taskId: cmd.taskId, taskName: cmd.taskName, blockHeight: cmd.blockHeight,
+                     target: cmd.target, amount: cmd.amount, ruleId: cmd.ruleId,
+                     success: false, skipped: true, reason: '', elapsed: 0, timestamp: Date.now(), balanceAfter: null };
+          }
+        }
+
         const t0 = Date.now();
 
         if (cmd.blockHeight) {
@@ -421,7 +433,7 @@
         const targetLabel = TARGET_TEXT[cmd.target] || cmd.target;
         if (result.success) {
           if (panel) panel.addLog(`[成功] ${targetLabel} ¥${cmd.amount} [${elapsed}ms]`);
-        } else {
+        } else if (!result.skipped) {
           if (panel) panel.addLog(`[失败] ${targetLabel} ¥${cmd.amount}: ${result.reason}`);
         }
         if (panel) panel.update();
@@ -449,7 +461,10 @@
           const cmd = this.queue.shift();
           try {
             const betResult = await this.executeOne(cmd);
-            document.dispatchEvent(new CustomEvent('haxi-bet-result-v2', { detail: betResult }));
+            // 不兼容页面的静默跳过结果不派发，避免前端误记为失败
+            if (!betResult.skipped) {
+              document.dispatchEvent(new CustomEvent('haxi-bet-result-v2', { detail: betResult }));
+            }
           } catch (err) {
             this.totalExecuted++; this.totalFailed++;
             const failResult = { taskId: cmd.taskId, blockHeight: cmd.blockHeight, target: cmd.target, amount: cmd.amount, success: false, reason: err.message, timestamp: Date.now() };

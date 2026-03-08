@@ -499,6 +499,17 @@
 
       // 执行单笔下注 (含重试)
       async executeOne(cmd) {
+        // 页面投注类型兼容性检查: 不匹配则静默跳过，不产生[失败]日志
+        const gameType = detectGameType();
+        if (gameType !== null) {
+          const isSizeBet = cmd.target === 'BIG' || cmd.target === 'SMALL';
+          const isParityBet = cmd.target === 'ODD' || cmd.target === 'EVEN';
+          if ((gameType === 'PARITY' && isSizeBet) || (gameType === 'SIZE' && isParityBet)) {
+            return { taskId: cmd.taskId, taskName: cmd.taskName, blockHeight: cmd.blockHeight,
+                     target: cmd.target, amount: cmd.amount, ruleId: cmd.ruleId,
+                     success: false, skipped: true, reason: '', elapsed: 0, timestamp: Date.now(), balanceAfter: null };
+          }
+        }
         // 区块高度验证 (支持等待下一个区块)
         if (cmd.blockHeight) {
           const currentBlock = SiteAdapter.getCurrentBlock();
@@ -580,10 +591,12 @@
           try {
             const betResult = await this.executeOne(cmd);
 
-            // 同页面回退: 派发结果给本地前端
-            document.dispatchEvent(new CustomEvent('haxi-bet-result', {
-              detail: betResult
-            }));
+            // 同页面回退: 派发结果给本地前端 (跳过不兼容页面的静默结果)
+            if (!betResult.skipped) {
+              document.dispatchEvent(new CustomEvent('haxi-bet-result', {
+                detail: betResult
+              }));
+            }
 
           } catch (err) {
             this.totalExecuted++;
