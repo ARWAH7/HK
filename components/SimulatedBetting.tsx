@@ -1478,13 +1478,13 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       nextTasks.forEach(task => {
         if (!task.isActive) return;
         const rawLosses = task.state.rawConsecutiveLosses || 0;
-        // 连输触发: 必须亏损状态才切换
+        // 连输触发: 达到连输阈值即切换，不检查盈亏状态
         if (task.chainEnabled && task.chainNextTaskId && task.chainLossThreshold) {
-          if (rawLosses >= task.chainLossThreshold && task.stats.profit < 0) {
+          if (rawLosses >= task.chainLossThreshold) {
             chainSwitches.push({
               deactivateId: task.id,
               activateId: task.chainNextTaskId,
-              lossAmount: Math.abs(task.stats.profit),
+              lossAmount: Math.max(0, -task.stats.profit), // 亏损额(盈利时为0)
               returnToId: task.id
             });
           }
