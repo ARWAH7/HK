@@ -2083,8 +2083,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
             // 仅在当前列的 evoBeadRows 行内跟注
             if (currentRowInCol < evoRows) {
-              // 检查当前列是否已有赢注（赢了就停止本列）
-              const colWon = bets.some(b =>
+              // 检查当前列是否已有赢注（用 finalBets 包含本轮已结算的赢注，不用原始 bets）
+              const colWon = finalBets.some(b =>
                 b.taskId === task.id &&
                 b.status === 'WIN' &&
                 b.ruleId === rule.id &&
