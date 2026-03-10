@@ -2041,25 +2041,22 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
           const isReverse = task.config.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE';
           const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
           const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
-          // 取最近N期（ruleBlocks[0]是最新）
-          const recentBlocks = ruleBlocks.slice(0, n);
-
-          if (recentBlocks.length >= minSt) {
-            if (hasParity) {
-              const pStreak = calculateStreak(recentBlocks, 'PARITY');
-              if (pStreak.count >= minSt && pStreak.val) {
-                type = 'PARITY';
-                target = isReverse ? (pStreak.val === 'ODD' ? 'EVEN' : 'ODD') : pStreak.val as BetTarget;
-                if (ts.includes(target)) shouldBet = true;
-              }
+          // 起投连数: 用 ruleBlocks 全局连续数（不截断），上限 trendWindow
+          // 起投连数=minSt: 当前连续数 >= minSt 才投; trendWindow=N: 连续数超过N停止跟（避免追超长龙）
+          if (hasParity) {
+            const pStreak = calculateStreak(ruleBlocks, 'PARITY');
+            if (pStreak.count >= minSt && pStreak.count <= n && pStreak.val) {
+              type = 'PARITY';
+              target = isReverse ? (pStreak.val === 'ODD' ? 'EVEN' : 'ODD') : pStreak.val as BetTarget;
+              if (ts.includes(target)) shouldBet = true;
             }
-            if (!shouldBet && hasSize) {
-              const sStreak = calculateStreak(recentBlocks, 'SIZE');
-              if (sStreak.count >= minSt && sStreak.val) {
-                type = 'SIZE';
-                target = isReverse ? (sStreak.val === 'BIG' ? 'SMALL' : 'BIG') : sStreak.val as BetTarget;
-                if (ts.includes(target)) shouldBet = true;
-              }
+          }
+          if (!shouldBet && hasSize) {
+            const sStreak = calculateStreak(ruleBlocks, 'SIZE');
+            if (sStreak.count >= minSt && sStreak.count <= n && sStreak.val) {
+              type = 'SIZE';
+              target = isReverse ? (sStreak.val === 'BIG' ? 'SMALL' : 'BIG') : sStreak.val as BetTarget;
+              if (ts.includes(target)) shouldBet = true;
             }
           }
         } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND_EVO') {
@@ -2071,9 +2068,12 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
           const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
           const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
 
-          // 激活条件：需达到指定连输数
-          const rawLosses = task.state.rawConsecutiveLosses || 0;
-          if (rawLosses >= evoActivation) {
+          // 激活条件：用游戏结果连续数（避免鸡蛋问题：任务未下注则自身亏损永远为0）
+          const pStreakAll = hasParity ? calculateStreak(ruleBlocks, 'PARITY') : null;
+          const sStreakAll = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
+          const gameStreak = Math.max(pStreakAll?.count || 0, sStreakAll?.count || 0);
+
+          if (gameStreak >= evoActivation) {
             // 珠盘列追踪：计算当前位置在珠盘中的列和行
             const beadRows = rule.beadRows || 6;
             const epoch = rule.startBlock || 0;
@@ -2093,25 +2093,16 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               );
 
               if (!colWon) {
-                // 近期顺势 + 起投连数
-                const recentBlocks = ruleBlocks.slice(0, n);
-                if (recentBlocks.length >= minSt) {
-                  if (hasParity) {
-                    const pStreak = calculateStreak(recentBlocks, 'PARITY');
-                    if (pStreak.count >= minSt && pStreak.val) {
-                      type = 'PARITY';
-                      target = pStreak.val as BetTarget;
-                      if (ts.includes(target)) shouldBet = true;
-                    }
-                  }
-                  if (!shouldBet && hasSize) {
-                    const sStreak = calculateStreak(recentBlocks, 'SIZE');
-                    if (sStreak.count >= minSt && sStreak.val) {
-                      type = 'SIZE';
-                      target = sStreak.val as BetTarget;
-                      if (ts.includes(target)) shouldBet = true;
-                    }
-                  }
+                // 方向判断：复用已计算的全局连续数，同时满足起投连数
+                if (hasParity && pStreakAll && pStreakAll.count >= minSt && pStreakAll.val) {
+                  type = 'PARITY';
+                  target = pStreakAll.val as BetTarget;
+                  if (ts.includes(target)) shouldBet = true;
+                }
+                if (!shouldBet && hasSize && sStreakAll && sStreakAll.count >= minSt && sStreakAll.val) {
+                  type = 'SIZE';
+                  target = sStreakAll.val as BetTarget;
+                  if (ts.includes(target)) shouldBet = true;
                 }
               }
             }
@@ -3502,7 +3493,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            </div>
                          </div>
                          <p className="text-[9px] text-teal-600 font-semibold">
-                           连输≥{draftConfig.evoMinLossStreak ?? 6}期后激活，在珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列
+                           游戏连续相同结果≥{draftConfig.evoMinLossStreak ?? 6}期后激活，在珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列；起投连数=同向最少期数
                          </p>
                       </div>
                    )}
@@ -3513,7 +3504,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                           {(draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE') && (
                              <div className="flex items-center justify-between">
                                 <span className={`text-[10px] font-bold flex items-center ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'text-rose-600' : 'text-lime-600'}`}>
-                                    <BarChart2 className="w-3 h-3 mr-1" /> 参考期数 (N)
+                                    <BarChart2 className="w-3 h-3 mr-1" /> 最大连数 N
                                 </span>
                                 <input
                                     type="number" min="2"
@@ -3767,7 +3758,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        const c = t.config;
                        switch (c.autoTarget) {
                          case 'FOLLOW_RECENT_TREND':
-                         case 'FOLLOW_RECENT_TREND_REVERSE': return `窗口N=${c.trendWindow || 5} 起投${c.minStreak || 1}连`;
+                         case 'FOLLOW_RECENT_TREND_REVERSE': return `起投${c.minStreak || 1}~最大${c.trendWindow || 5}连`;
                          case 'FOLLOW_RECENT_TREND_EVO': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 6}连输`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
