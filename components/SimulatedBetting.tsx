@@ -63,6 +63,8 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   // v5.5 新增
   | 'DUAL_MOMENTUM'         // 双重动量确认：单双+大小两维度同向才下注
   | 'REVERSE_DRAGON_MARTINGALE' // 反龙马丁：检测长龙后反向下注+马丁加码
+  // v5.6 新增
+  | 'FOLLOW_RECENT_TREND_EVO'   // 近期顺势进化版：珠盘列跟注+连输激活
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -161,6 +163,9 @@ interface StrategyConfig {
   dualMomentumThreshold?: number;  // 单维度动量阈值% (默认60)
   // v5.5: 反龙马丁参数
   rDragonMinStreak?: number;    // 触发反转的最小连续长龙 (默认5)
+  // v5.6: 近期顺势进化版参数
+  evoBeadRows?: number;         // 珠盘列内最多跟注行数 (默认5，赢后停止本列)
+  evoMinLossStreak?: number;    // 策略激活所需最小连输数 (默认6)
 }
 
 interface StrategyState {
@@ -1050,6 +1055,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         case 'RANDOM_SIZE': detail = '随机大小'; break;
         case 'FOLLOW_RECENT_TREND': detail = `顺势N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${task.config.trendWindow || 5}[${tsStr}]`; break;
+        case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
         case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
         default: detail = '自定义';
@@ -2031,27 +2037,84 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
           type = (target === 'ODD' || target === 'EVEN') ? 'PARITY' : 'SIZE';
         } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND' || task.config.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE') {
           const n = task.config.trendWindow || 5;
-          const sourceHeight = nextHeight - (n * rule.value);
-          const sourceBlock = allBlocks.find(b => b.height === sourceHeight);
+          const minSt = task.config.minStreak || 1;
+          const isReverse = task.config.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE';
+          const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+          const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+          // 取最近N期（ruleBlocks[0]是最新）
+          const recentBlocks = ruleBlocks.slice(0, n);
 
-          if (sourceBlock) {
-             // 根据targetSelections决定操作的域
-             const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
-             const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
-             const isReverse = task.config.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE';
+          if (recentBlocks.length >= minSt) {
+            if (hasParity) {
+              const pStreak = calculateStreak(recentBlocks, 'PARITY');
+              if (pStreak.count >= minSt && pStreak.val) {
+                type = 'PARITY';
+                target = isReverse ? (pStreak.val === 'ODD' ? 'EVEN' : 'ODD') : pStreak.val as BetTarget;
+                if (ts.includes(target)) shouldBet = true;
+              }
+            }
+            if (!shouldBet && hasSize) {
+              const sStreak = calculateStreak(recentBlocks, 'SIZE');
+              if (sStreak.count >= minSt && sStreak.val) {
+                type = 'SIZE';
+                target = isReverse ? (sStreak.val === 'BIG' ? 'SMALL' : 'BIG') : sStreak.val as BetTarget;
+                if (ts.includes(target)) shouldBet = true;
+              }
+            }
+          }
+        } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND_EVO') {
+          // v5.6: 近期顺势进化版 — 珠盘列跟注 + 连输激活
+          const n = task.config.trendWindow || 5;
+          const minSt = task.config.minStreak || 1;
+          const evoRows = task.config.evoBeadRows ?? 5;
+          const evoActivation = task.config.evoMinLossStreak ?? 6;
+          const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+          const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
 
-             if (hasParity) {
-                 type = 'PARITY';
-                 if (isReverse) target = sourceBlock.type === 'ODD' ? 'EVEN' : 'ODD';
-                 else target = sourceBlock.type;
-                 if (ts.includes(target)) shouldBet = true;
-             }
-             if (!shouldBet && hasSize) {
-                 type = 'SIZE';
-                 if (isReverse) target = sourceBlock.sizeType === 'BIG' ? 'SMALL' : 'BIG';
-                 else target = sourceBlock.sizeType;
-                 if (ts.includes(target)) shouldBet = true;
-             }
+          // 激活条件：需达到指定连输数
+          const rawLosses = task.state.rawConsecutiveLosses || 0;
+          if (rawLosses >= evoActivation) {
+            // 珠盘列追踪：计算当前位置在珠盘中的列和行
+            const beadRows = rule.beadRows || 6;
+            const epoch = rule.startBlock || 0;
+            const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
+            const currentCol = Math.floor(logicalIdx / beadRows);
+            const currentRowInCol = logicalIdx % beadRows;
+
+            // 仅在当前列的 evoBeadRows 行内跟注
+            if (currentRowInCol < evoRows) {
+              // 检查当前列是否已有赢注（赢了就停止本列）
+              const colWon = bets.some(b =>
+                b.taskId === task.id &&
+                b.status === 'WIN' &&
+                b.ruleId === rule.id &&
+                rule.value > 0 &&
+                Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
+              );
+
+              if (!colWon) {
+                // 近期顺势 + 起投连数
+                const recentBlocks = ruleBlocks.slice(0, n);
+                if (recentBlocks.length >= minSt) {
+                  if (hasParity) {
+                    const pStreak = calculateStreak(recentBlocks, 'PARITY');
+                    if (pStreak.count >= minSt && pStreak.val) {
+                      type = 'PARITY';
+                      target = pStreak.val as BetTarget;
+                      if (ts.includes(target)) shouldBet = true;
+                    }
+                  }
+                  if (!shouldBet && hasSize) {
+                    const sStreak = calculateStreak(recentBlocks, 'SIZE');
+                    if (sStreak.count >= minSt && sStreak.val) {
+                      type = 'SIZE';
+                      target = sStreak.val as BetTarget;
+                      if (ts.includes(target)) shouldBet = true;
+                    }
+                  }
+                }
+              }
+            }
           }
         } else if (task.config.autoTarget === 'DRAGON_FOLLOW' || task.config.autoTarget === 'DRAGON_REVERSE') {
            if (ruleBlocks.length > 0) {
@@ -2326,8 +2389,17 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
            // v5.3: 多模型共识 - 运行全部16模型，至少M个模型预测相同方向才下注
            if (ruleBlocks.length >= 24) {
              const minConsensus = task.config.consensusMinModels || 5;
+             const minSt = task.config.minStreak || 1;
              const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
              const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+             // 起投连数预过滤：当前连续相同结果数 >= minStreak 才运行模型
+             const pStreak = hasParity ? calculateStreak(ruleBlocks, 'PARITY') : null;
+             const sStreak = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
+             const streakOk = (pStreak && pStreak.count >= minSt) || (sStreak && sStreak.count >= minSt);
+             if (!streakOk) {
+               // 未满足起投连数，跳过模型运算
+             } else {
 
              const pSeq = ruleBlocks.slice(0, 40).map(b => b.type === 'ODD' ? 'O' : 'E').join('');
              const sSeq = ruleBlocks.slice(0, 40).map(b => b.sizeType === 'BIG' ? 'B' : 'S').join('');
@@ -2377,6 +2449,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                  if (ts.includes(target)) shouldBet = true;
                }
              }
+             } // end streakOk else
            }
         } else if (task.config.autoTarget === 'DYNAMIC_CYCLE') {
            // v5.3: 动态周期 - 自动识别最强周期模式并预测
@@ -3086,6 +3159,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_LAST'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_LAST' ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-400 border-gray-200'}`}>反上期砍</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期顺势</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期反势</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_EVO'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>近势进化</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_FOLLOW' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙顺</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_REVERSE' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙反</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙顺</button>
@@ -3247,14 +3321,18 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                    {draftConfig.autoTarget === 'MULTI_MODEL_CONSENSUS' && (
                       <div className="bg-violet-50/50 p-3 rounded-xl border border-violet-100/50 space-y-2">
                          <span className="text-[10px] font-black text-violet-600 uppercase block">多模型共识参数</span>
-                         <div className="grid grid-cols-1 gap-2">
+                         <div className="grid grid-cols-2 gap-2">
                            <div>
                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">最少共识模型数</label>
                              <input type="number" min="2" max="16" step="1" value={draftConfig.consensusMinModels || 5} onChange={e => setDraftConfig({...draftConfig, consensusMinModels: Math.min(16, Math.max(2, parseInt(e.target.value) || 2))})} placeholder="5" className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-violet-200 outline-none text-center" />
                            </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">起投连数</label>
+                             <input type="number" min="1" value={draftConfig.minStreak ?? 1} onChange={e => setDraftConfig({...draftConfig, minStreak: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-violet-200 outline-none text-center" />
+                           </div>
                          </div>
                          <p className="text-[9px] text-violet-600 font-semibold">
-                           运行全部16个AI模型，至少{draftConfig.consensusMinModels || 5}个模型预测相同方向时才下注
+                           运行全部16个AI模型，连续≥{draftConfig.minStreak || 1}期相同且至少{draftConfig.consensusMinModels || 5}个模型共识时才下注
                          </p>
                       </div>
                    )}
@@ -3401,6 +3479,34 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
+                   {/* v5.6: 近期顺势进化版参数 */}
+                   {draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO' && (
+                      <div className="bg-teal-50/50 p-3 rounded-xl border border-teal-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-teal-600 uppercase block">近势进化参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">参考期数 N</label>
+                             <input type="number" min="2" value={draftConfig.trendWindow ?? 5} onChange={e => setDraftConfig({...draftConfig, trendWindow: Math.max(2, parseInt(e.target.value) || 5)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">起投连数</label>
+                             <input type="number" min="1" value={draftConfig.minStreak ?? 1} onChange={e => setDraftConfig({...draftConfig, minStreak: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">珠盘跟注行数</label>
+                             <input type="number" min="1" value={draftConfig.evoBeadRows ?? 5} onChange={e => setDraftConfig({...draftConfig, evoBeadRows: Math.max(1, parseInt(e.target.value) || 5)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">激活连输数</label>
+                             <input type="number" min="1" value={draftConfig.evoMinLossStreak ?? 6} onChange={e => setDraftConfig({...draftConfig, evoMinLossStreak: Math.max(1, parseInt(e.target.value) || 6)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-teal-600 font-semibold">
+                           连输≥{draftConfig.evoMinLossStreak ?? 6}期后激活，在珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列
+                         </p>
+                      </div>
+                   )}
+
                    {/* 模式参数 */}
                    {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON') && (
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-2">
@@ -3411,7 +3517,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                                 </span>
                                 <input
                                     type="number" min="2"
-                                    value={draftConfig.trendWindow}
+                                    value={draftConfig.trendWindow ?? 5}
                                     onChange={e => setDraftConfig({...draftConfig, trendWindow: Math.max(2, parseInt(e.target.value) || 5)})}
                                     className={`w-16 text-center bg-white rounded-lg text-xs font-black border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'border-rose-200 text-rose-600' : 'border-lime-200 text-lime-600'}`}
                                 />
@@ -3621,6 +3727,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             case 'RANDOM_SIZE': detail = '随机大小'; break;
                             case 'FOLLOW_RECENT_TREND': detail = `顺势N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${t.config.trendWindow || 5}[${tsStr}]`; break;
+                            case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
                             case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
                             case 'BEAD_DRAGON_FOLLOW': detail = `珠龙顺[${tsStr}]`; break;
@@ -3651,6 +3758,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        'MEAN_REVERSION':'均值回归','HOT_COLD_SWITCH':'冷热跟随',
                        'ALTERNATING_FOLLOW':'交替跳选',
                        'DUAL_MOMENTUM':'双重动量','REVERSE_DRAGON_MARTINGALE':'反龙马丁',
+                       'FOLLOW_RECENT_TREND_EVO':'近势进化',
                      };
                      const autoTargetShortLabel = atShort[task.config.autoTarget] || task.config.autoTarget;
 
@@ -3660,6 +3768,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        switch (c.autoTarget) {
                          case 'FOLLOW_RECENT_TREND':
                          case 'FOLLOW_RECENT_TREND_REVERSE': return `窗口N=${c.trendWindow || 5} 起投${c.minStreak || 1}连`;
+                         case 'FOLLOW_RECENT_TREND_EVO': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 6}连输`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
                          case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;

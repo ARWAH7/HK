@@ -13,6 +13,7 @@ import {
   loadThemeColors,
   debouncedSaveThemeColors,
   loadRules,
+  saveRules,
   debouncedSaveRules,
   loadActiveRuleId,
   saveActiveRuleId,
@@ -188,24 +189,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
     blocksRef.current = allBlocks;
-    
-    // 只在配置加载完成后才保存规则
-    if (!isLoadingConfig) {
-      debouncedSaveRules(rules);
-    }
-    
+
     // ✅ 优化效果监控：输出内存使用情况
     if (process.env.NODE_ENV === 'development' && allBlocks.length % 10 === 0) {
       console.log(`[全局状态] allBlocks 更新: ${allBlocks.length} 个区块`);
       if (allBlocks.length > 0) {
         console.log(`[全局状态] 最新区块: ${allBlocks[0]?.height}, 最旧区块: ${allBlocks[allBlocks.length - 1]?.height}`);
-        
+
         // 计算内存占用（估算）
         const estimatedMemoryMB = (allBlocks.length * 0.5 / 1024).toFixed(2); // 假设每个区块约 0.5KB
         console.log(`[内存估算] 区块数据约占用: ${estimatedMemoryMB} MB`);
       }
     }
-  }, [allBlocks, rules, isLoadingConfig]);
+  }, [allBlocks]);
+
+  // 采样规则变化时自动保存 (不依赖 allBlocks，防止每个区块到来就重置防抖定时器)
+  useEffect(() => {
+    if (!isLoadingConfig) {
+      debouncedSaveRules(rules);
+    }
+  }, [rules, isLoadingConfig]);
 
   // 关注模式变化时保存到后端
   useEffect(() => {
@@ -897,8 +900,10 @@ const App: React.FC = () => {
     
     if (isNewRule) {
       // ✅ 新规则：添加到列表
-      setRules(prev => [...prev, editingRule]);
-      
+      const newRules = [...rules, editingRule];
+      setRules(newRules);
+      saveRules(newRules).catch(e => console.error('[规则] 保存失败:', e));
+
       // 立即加载新规则的数据
       console.log(`[规则] 🆕 创建新规则: ${editingRule.label}，开始加载数据...`);
       
@@ -930,7 +935,9 @@ const App: React.FC = () => {
     } else {
       // ✅ 现有规则：更新
       const oldRule = rules.find(r => r.id === editingRule.id);
-      setRules(prev => prev.map(r => r.id === editingRule.id ? editingRule : r));
+      const updatedRules = rules.map(r => r.id === editingRule.id ? editingRule : r);
+      setRules(updatedRules);
+      saveRules(updatedRules).catch(e => console.error('[规则] 保存失败:', e));
       
       // 检查规则的步长或偏移是否改变
       if (oldRule && (oldRule.value !== editingRule.value || oldRule.startBlock !== editingRule.startBlock)) {
@@ -977,15 +984,13 @@ const App: React.FC = () => {
 
   const deleteRule = (id: string) => {
     if (rules.length <= 1) return;
-    
+
     // 找到要删除的规则
     const ruleToDelete = rules.find(r => r.id === id);
-    
-    setRules(prev => {
-      const filtered = prev.filter(r => r.id !== id);
-      if (activeRuleId === id) setActiveRuleId(filtered[0]?.id || '');
-      return filtered;
-    });
+    const filteredRules = rules.filter(r => r.id !== id);
+    if (activeRuleId === id) setActiveRuleId(filteredRules[0]?.id || '');
+    setRules(filteredRules);
+    saveRules(filteredRules).catch(e => console.error('[规则] 保存失败:', e));
     
     // ✅ 清除对应的缓存
     if (ruleToDelete) {
@@ -1017,12 +1022,10 @@ const App: React.FC = () => {
 
     // ✅ 找到要删除的规则
     const rulesToDelete = rules.filter(r => selectedRuleIds.has(r.id));
-    
-    setRules(prev => {
-      const filtered = prev.filter(r => !selectedRuleIds.has(r.id));
-      if (selectedRuleIds.has(activeRuleId)) setActiveRuleId(filtered[0]?.id || '');
-      return filtered;
-    });
+    const filteredRules = rules.filter(r => !selectedRuleIds.has(r.id));
+    if (selectedRuleIds.has(activeRuleId)) setActiveRuleId(filteredRules[0]?.id || '');
+    setRules(filteredRules);
+    saveRules(filteredRules).catch(e => console.error('[规则] 保存失败:', e));
     
     // ✅ 批量清除缓存
     setBlocksCache(prev => {
@@ -1060,7 +1063,9 @@ const App: React.FC = () => {
   };
 
   const batchUpdateDragonThreshold = (val: number) => {
-    setRules(prev => prev.map(r => ({ ...r, dragonThreshold: val })));
+    const updatedRules = rules.map(r => ({ ...r, dragonThreshold: val }));
+    setRules(updatedRules);
+    saveRules(updatedRules).catch(e => console.error('[规则] 保存失败:', e));
     alert(`已将所有规则的长龙提醒阈值批量设置为: ${val}连`);
   };
 
