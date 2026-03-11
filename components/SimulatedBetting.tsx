@@ -2066,93 +2066,102 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
             }
           }
         } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND_EVO') {
-          // v5.6: 近期顺势进化版 — 珠盘列跟注 + 连输激活
+          // v5.6: 近期顺势进化版 — 方向取 N 期前结果（使 N 参数真正生效）+ 珠盘列跟注
           const n = task.config.trendWindow || 5;
-          const minSt = task.config.minStreak || 1;
           const evoRows = task.config.evoBeadRows ?? 5;
           const evoActivation = task.config.evoMinLossStreak ?? 1;
           const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
           const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
 
-          // 激活条件：用游戏结果连续数（避免鸡蛋问题：任务未下注则自身亏损永远为0）
-          const pStreakAll = hasParity ? calculateStreak(ruleBlocks, 'PARITY') : null;
-          const sStreakAll = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
-          const gameStreak = Math.max(pStreakAll?.count || 0, sStreakAll?.count || 0);
+          if (ruleBlocks.length >= n) {
+            const historicBlock = ruleBlocks[n - 1]; // 恰好 N 期前的那一期
 
-          // ruleBlocks.length >= n：等待足够历史数据后再激活（避免期数偏移）
-          if (ruleBlocks.length >= n && gameStreak >= evoActivation) {
-            // 珠盘列追踪：计算当前位置在珠盘中的列和行
-            const beadRows = rule.beadRows || 6;
-            const epoch = rule.startBlock || 0;
-            const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
-            const currentCol = Math.floor(logicalIdx / beadRows);
-            const currentRowInCol = logicalIdx % beadRows;
+            // evoActivation：当前连续相同数作为信号质量门控
+            const gameStreak = Math.max(
+              hasParity ? calculateStreak(ruleBlocks, 'PARITY').count : 0,
+              hasSize ? calculateStreak(ruleBlocks, 'SIZE').count : 0
+            );
 
-            // 仅在当前列的 evoBeadRows 行内跟注
-            if (currentRowInCol < evoRows) {
-              // 检查当前列是否已有赢注（用 finalBets 包含本轮已结算的赢注，不用原始 bets）
-              const colWon = finalBets.some(b =>
-                b.taskId === task.id &&
-                b.status === 'WIN' &&
-                b.ruleId === rule.id &&
-                rule.value > 0 &&
-                Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
-              );
+            if (gameStreak >= evoActivation) {
+              // 珠盘列追踪：计算当前位置在珠盘中的列和行
+              const beadRows = rule.beadRows || 6;
+              const epoch = rule.startBlock || 0;
+              const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
+              const currentCol = Math.floor(logicalIdx / beadRows);
+              const currentRowInCol = logicalIdx % beadRows;
 
-              if (!colWon) {
-                // 方向判断：连续数需在 [minSt, n] 范围内
-                if (hasParity && pStreakAll && pStreakAll.count >= minSt && pStreakAll.count <= n && pStreakAll.val) {
-                  type = 'PARITY';
-                  target = pStreakAll.val as BetTarget;
-                  if (ts.includes(target)) shouldBet = true;
-                }
-                if (!shouldBet && hasSize && sStreakAll && sStreakAll.count >= minSt && sStreakAll.count <= n && sStreakAll.val) {
-                  type = 'SIZE';
-                  target = sStreakAll.val as BetTarget;
-                  if (ts.includes(target)) shouldBet = true;
+              // 仅在当前列的 evoBeadRows 行内跟注
+              if (currentRowInCol < evoRows) {
+                // 检查当前列是否已有赢注
+                const colWon = finalBets.some(b =>
+                  b.taskId === task.id &&
+                  b.status === 'WIN' &&
+                  b.ruleId === rule.id &&
+                  rule.value > 0 &&
+                  Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
+                );
+
+                if (!colWon) {
+                  // 方向：N 期前那一期的结果（不同 N 值对应不同历史期，真正区分任务行为）
+                  if (hasParity && historicBlock.type) {
+                    type = 'PARITY';
+                    target = historicBlock.type as BetTarget;
+                    if (ts.includes(target)) shouldBet = true;
+                  }
+                  if (!shouldBet && hasSize && historicBlock.sizeType) {
+                    type = 'SIZE';
+                    target = historicBlock.sizeType as BetTarget;
+                    if (ts.includes(target)) shouldBet = true;
+                  }
                 }
               }
             }
           }
         } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND_EVO_REVERSE') {
-          // v5.6: 近期反势进化版 — 同 EVO 但方向取反（顺势反向下注）
+          // v5.6: 近期反势进化版 — 同 EVO 但方向取反
           const n = task.config.trendWindow || 5;
-          const minSt = task.config.minStreak || 1;
           const evoRows = task.config.evoBeadRows ?? 5;
           const evoActivation = task.config.evoMinLossStreak ?? 1;
           const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
           const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
 
-          const pStreakAllR = hasParity ? calculateStreak(ruleBlocks, 'PARITY') : null;
-          const sStreakAllR = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
-          const gameStreakR = Math.max(pStreakAllR?.count || 0, sStreakAllR?.count || 0);
+          if (ruleBlocks.length >= n) {
+            const historicBlock = ruleBlocks[n - 1];
 
-          if (ruleBlocks.length >= n && gameStreakR >= evoActivation) {
-            const beadRows = rule.beadRows || 6;
-            const epoch = rule.startBlock || 0;
-            const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
-            const currentCol = Math.floor(logicalIdx / beadRows);
-            const currentRowInCol = logicalIdx % beadRows;
+            const gameStreak = Math.max(
+              hasParity ? calculateStreak(ruleBlocks, 'PARITY').count : 0,
+              hasSize ? calculateStreak(ruleBlocks, 'SIZE').count : 0
+            );
 
-            if (currentRowInCol < evoRows) {
-              const colWon = finalBets.some(b =>
-                b.taskId === task.id &&
-                b.status === 'WIN' &&
-                b.ruleId === rule.id &&
-                rule.value > 0 &&
-                Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
-              );
+            if (gameStreak >= evoActivation) {
+              const beadRows = rule.beadRows || 6;
+              const epoch = rule.startBlock || 0;
+              const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
+              const currentCol = Math.floor(logicalIdx / beadRows);
+              const currentRowInCol = logicalIdx % beadRows;
 
-              if (!colWon) {
-                if (hasParity && pStreakAllR && pStreakAllR.count >= minSt && pStreakAllR.count <= n && pStreakAllR.val) {
-                  type = 'PARITY';
-                  target = pStreakAllR.val === 'ODD' ? 'EVEN' : 'ODD';
-                  if (ts.includes(target)) shouldBet = true;
-                }
-                if (!shouldBet && hasSize && sStreakAllR && sStreakAllR.count >= minSt && sStreakAllR.count <= n && sStreakAllR.val) {
-                  type = 'SIZE';
-                  target = sStreakAllR.val === 'BIG' ? 'SMALL' : 'BIG';
-                  if (ts.includes(target)) shouldBet = true;
+              if (currentRowInCol < evoRows) {
+                const colWon = finalBets.some(b =>
+                  b.taskId === task.id &&
+                  b.status === 'WIN' &&
+                  b.ruleId === rule.id &&
+                  rule.value > 0 &&
+                  Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
+                );
+
+                if (!colWon) {
+                  if (hasParity && historicBlock.type) {
+                    type = 'PARITY';
+                    const raw = historicBlock.type as BetTarget;
+                    target = raw === 'ODD' ? 'EVEN' : 'ODD';
+                    if (ts.includes(target)) shouldBet = true;
+                  }
+                  if (!shouldBet && hasSize && historicBlock.sizeType) {
+                    type = 'SIZE';
+                    const raw = historicBlock.sizeType as BetTarget;
+                    target = raw === 'BIG' ? 'SMALL' : 'BIG';
+                    if (ts.includes(target)) shouldBet = true;
+                  }
                 }
               }
             }
