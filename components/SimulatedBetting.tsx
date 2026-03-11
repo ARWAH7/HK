@@ -64,7 +64,8 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   | 'DUAL_MOMENTUM'         // 双重动量确认：单双+大小两维度同向才下注
   | 'REVERSE_DRAGON_MARTINGALE' // 反龙马丁：检测长龙后反向下注+马丁加码
   // v5.6 新增
-  | 'FOLLOW_RECENT_TREND_EVO'   // 近期顺势进化版：珠盘列跟注+连输激活
+  | 'FOLLOW_RECENT_TREND_EVO'         // 近期顺势进化版：珠盘列跟注+连输激活
+  | 'FOLLOW_RECENT_TREND_EVO_REVERSE' // 近期反势进化版：同EVO但方向取反
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -1056,6 +1057,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         case 'FOLLOW_RECENT_TREND': detail = `顺势N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${task.config.trendWindow || 5}[${tsStr}]`; break;
+        case 'FOLLOW_RECENT_TREND_EVO_REVERSE': detail = `反势进化N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
         case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
         default: detail = '自定义';
@@ -2064,7 +2066,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
           const n = task.config.trendWindow || 5;
           const minSt = task.config.minStreak || 1;
           const evoRows = task.config.evoBeadRows ?? 5;
-          const evoActivation = task.config.evoMinLossStreak ?? 6;
+          const evoActivation = task.config.evoMinLossStreak ?? 1;
           const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
           const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
 
@@ -2073,7 +2075,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
           const sStreakAll = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
           const gameStreak = Math.max(pStreakAll?.count || 0, sStreakAll?.count || 0);
 
-          if (gameStreak >= evoActivation) {
+          // ruleBlocks.length >= n：等待足够历史数据后再激活（避免期数偏移）
+          if (ruleBlocks.length >= n && gameStreak >= evoActivation) {
             // 珠盘列追踪：计算当前位置在珠盘中的列和行
             const beadRows = rule.beadRows || 6;
             const epoch = rule.startBlock || 0;
@@ -2093,15 +2096,58 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               );
 
               if (!colWon) {
-                // 方向判断：复用已计算的全局连续数，同时满足起投连数
-                if (hasParity && pStreakAll && pStreakAll.count >= minSt && pStreakAll.val) {
+                // 方向判断：连续数需在 [minSt, n] 范围内
+                if (hasParity && pStreakAll && pStreakAll.count >= minSt && pStreakAll.count <= n && pStreakAll.val) {
                   type = 'PARITY';
                   target = pStreakAll.val as BetTarget;
                   if (ts.includes(target)) shouldBet = true;
                 }
-                if (!shouldBet && hasSize && sStreakAll && sStreakAll.count >= minSt && sStreakAll.val) {
+                if (!shouldBet && hasSize && sStreakAll && sStreakAll.count >= minSt && sStreakAll.count <= n && sStreakAll.val) {
                   type = 'SIZE';
                   target = sStreakAll.val as BetTarget;
+                  if (ts.includes(target)) shouldBet = true;
+                }
+              }
+            }
+          }
+        } else if (task.config.autoTarget === 'FOLLOW_RECENT_TREND_EVO_REVERSE') {
+          // v5.6: 近期反势进化版 — 同 EVO 但方向取反（顺势反向下注）
+          const n = task.config.trendWindow || 5;
+          const minSt = task.config.minStreak || 1;
+          const evoRows = task.config.evoBeadRows ?? 5;
+          const evoActivation = task.config.evoMinLossStreak ?? 1;
+          const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+          const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+          const pStreakAllR = hasParity ? calculateStreak(ruleBlocks, 'PARITY') : null;
+          const sStreakAllR = hasSize ? calculateStreak(ruleBlocks, 'SIZE') : null;
+          const gameStreakR = Math.max(pStreakAllR?.count || 0, sStreakAllR?.count || 0);
+
+          if (ruleBlocks.length >= n && gameStreakR >= evoActivation) {
+            const beadRows = rule.beadRows || 6;
+            const epoch = rule.startBlock || 0;
+            const logicalIdx = rule.value > 0 ? Math.floor((nextHeight - epoch) / rule.value) : 0;
+            const currentCol = Math.floor(logicalIdx / beadRows);
+            const currentRowInCol = logicalIdx % beadRows;
+
+            if (currentRowInCol < evoRows) {
+              const colWon = finalBets.some(b =>
+                b.taskId === task.id &&
+                b.status === 'WIN' &&
+                b.ruleId === rule.id &&
+                rule.value > 0 &&
+                Math.floor(Math.floor((b.targetHeight - epoch) / rule.value) / beadRows) === currentCol
+              );
+
+              if (!colWon) {
+                if (hasParity && pStreakAllR && pStreakAllR.count >= minSt && pStreakAllR.count <= n && pStreakAllR.val) {
+                  type = 'PARITY';
+                  target = pStreakAllR.val === 'ODD' ? 'EVEN' : 'ODD';
+                  if (ts.includes(target)) shouldBet = true;
+                }
+                if (!shouldBet && hasSize && sStreakAllR && sStreakAllR.count >= minSt && sStreakAllR.count <= n && sStreakAllR.val) {
+                  type = 'SIZE';
+                  target = sStreakAllR.val === 'BIG' ? 'SMALL' : 'BIG';
                   if (ts.includes(target)) shouldBet = true;
                 }
               }
@@ -3151,6 +3197,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期顺势</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期反势</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_EVO'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>近势进化</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_EVO_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO_REVERSE' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>反势进化</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_FOLLOW' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙顺</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_REVERSE' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙反</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙顺</button>
@@ -3489,11 +3536,39 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            </div>
                            <div>
                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">激活连输数</label>
-                             <input type="number" min="1" value={draftConfig.evoMinLossStreak ?? 6} onChange={e => setDraftConfig({...draftConfig, evoMinLossStreak: Math.max(1, parseInt(e.target.value) || 6)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
+                             <input type="number" min="1" value={draftConfig.evoMinLossStreak ?? 1} onChange={e => setDraftConfig({...draftConfig, evoMinLossStreak: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-teal-200 outline-none text-center" />
                            </div>
                          </div>
                          <p className="text-[9px] text-teal-600 font-semibold">
-                           游戏连续相同结果≥{draftConfig.evoMinLossStreak ?? 6}期后激活，在珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列；起投连数=同向最少期数
+                           游戏连续相同结果≥{draftConfig.evoMinLossStreak ?? 1}期后激活，在珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列；起投连数=同向最少期数
+                         </p>
+                      </div>
+                   )}
+
+                   {/* v5.6: 近期反势进化版参数 */}
+                   {draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO_REVERSE' && (
+                      <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-cyan-600 uppercase block">反势进化参数</span>
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">参考期数 N</label>
+                             <input type="number" min="2" value={draftConfig.trendWindow ?? 5} onChange={e => setDraftConfig({...draftConfig, trendWindow: Math.max(2, parseInt(e.target.value) || 5)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">起投连数</label>
+                             <input type="number" min="1" value={draftConfig.minStreak ?? 1} onChange={e => setDraftConfig({...draftConfig, minStreak: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">珠盘跟注行数</label>
+                             <input type="number" min="1" value={draftConfig.evoBeadRows ?? 5} onChange={e => setDraftConfig({...draftConfig, evoBeadRows: Math.max(1, parseInt(e.target.value) || 5)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">激活连数</label>
+                             <input type="number" min="1" value={draftConfig.evoMinLossStreak ?? 1} onChange={e => setDraftConfig({...draftConfig, evoMinLossStreak: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-cyan-200 outline-none text-center" />
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-cyan-600 font-semibold">
+                           游戏连续相同结果≥{draftConfig.evoMinLossStreak ?? 1}期后激活，反向下注（顺势反投）；珠盘每列前{draftConfig.evoBeadRows ?? 5}行内跟注，本列赢则停止等待下列
                          </p>
                       </div>
                    )}
@@ -3719,6 +3794,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             case 'FOLLOW_RECENT_TREND': detail = `顺势N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${t.config.trendWindow || 5}[${tsStr}]`; break;
+                            case 'FOLLOW_RECENT_TREND_EVO_REVERSE': detail = `反势进化N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
                             case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
                             case 'BEAD_DRAGON_FOLLOW': detail = `珠龙顺[${tsStr}]`; break;
@@ -3750,6 +3826,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        'ALTERNATING_FOLLOW':'交替跳选',
                        'DUAL_MOMENTUM':'双重动量','REVERSE_DRAGON_MARTINGALE':'反龙马丁',
                        'FOLLOW_RECENT_TREND_EVO':'近势进化',
+                       'FOLLOW_RECENT_TREND_EVO_REVERSE':'反势进化',
                      };
                      const autoTargetShortLabel = atShort[task.config.autoTarget] || task.config.autoTarget;
 
@@ -3759,7 +3836,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        switch (c.autoTarget) {
                          case 'FOLLOW_RECENT_TREND':
                          case 'FOLLOW_RECENT_TREND_REVERSE': return `起投${c.minStreak || 1}~最大${c.trendWindow || 5}连`;
-                         case 'FOLLOW_RECENT_TREND_EVO': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 6}连输`;
+                         case 'FOLLOW_RECENT_TREND_EVO': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 1}连`;
+                         case 'FOLLOW_RECENT_TREND_EVO_REVERSE': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 1}连`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
                          case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;
