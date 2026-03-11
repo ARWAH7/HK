@@ -66,6 +66,8 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   // v5.6 新增
   | 'FOLLOW_RECENT_TREND_EVO'         // 近期顺势进化版：珠盘列跟注+连输激活
   | 'FOLLOW_RECENT_TREND_EVO_REVERSE' // 近期反势进化版：同EVO但方向取反
+  | 'MIRROR_N_AGO'                    // 跟N期前：复制N期前结果
+  | 'MIRROR_N_AGO_REVERSE'            // 反N期前：反向N期前结果
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -1058,6 +1060,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${task.config.trendWindow || 5}[${tsStr}]`; break;
         case 'FOLLOW_RECENT_TREND_EVO_REVERSE': detail = `反势进化N=${task.config.trendWindow || 5}[${tsStr}]`; break;
+        case 'MIRROR_N_AGO': detail = `跟N期前N=${task.config.trendWindow || 6}[${tsStr}]`; break;
+        case 'MIRROR_N_AGO_REVERSE': detail = `反N期前N=${task.config.trendWindow || 6}[${tsStr}]`; break;
         case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
         case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
         default: detail = '自定义';
@@ -2153,6 +2157,28 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               }
             }
           }
+        } else if (task.config.autoTarget === 'MIRROR_N_AGO' || task.config.autoTarget === 'MIRROR_N_AGO_REVERSE') {
+          // v5.7: 跟/反N期前 — 第P期下注时复制（或反向）第P-N期的开奖结果
+          const n = task.config.trendWindow || 6;
+          const isReverse = task.config.autoTarget === 'MIRROR_N_AGO_REVERSE';
+          const hasParity = ts.some(t => t === 'ODD' || t === 'EVEN');
+          const hasSize = ts.some(t => t === 'BIG' || t === 'SMALL');
+
+          if (ruleBlocks.length >= n) {
+            const historicBlock = ruleBlocks[n - 1]; // 恰好N期前那一期（ruleBlocks[0]=最新，ruleBlocks[n-1]=N期前）
+            if (hasParity && historicBlock.type) {
+              type = 'PARITY';
+              const raw = historicBlock.type as BetTarget;
+              target = isReverse ? (raw === 'ODD' ? 'EVEN' : 'ODD') : raw;
+              if (ts.includes(target)) shouldBet = true;
+            }
+            if (!shouldBet && hasSize && historicBlock.sizeType) {
+              type = 'SIZE';
+              const raw = historicBlock.sizeType as BetTarget;
+              target = isReverse ? (raw === 'BIG' ? 'SMALL' : 'BIG') : raw;
+              if (ts.includes(target)) shouldBet = true;
+            }
+          }
         } else if (task.config.autoTarget === 'DRAGON_FOLLOW' || task.config.autoTarget === 'DRAGON_REVERSE') {
            if (ruleBlocks.length > 0) {
              const startStreak = task.config.minStreak || 3;
@@ -3198,6 +3224,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-400 border-gray-200'}`}>近期反势</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_EVO'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>近势进化</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'FOLLOW_RECENT_TREND_EVO_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_EVO_REVERSE' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-400 border-gray-200'}`}>反势进化</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MIRROR_N_AGO'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MIRROR_N_AGO' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-400 border-gray-200'}`}>跟N期前</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'MIRROR_N_AGO_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'MIRROR_N_AGO_REVERSE' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white text-gray-400 border-gray-200'}`}>反N期前</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_FOLLOW' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙顺</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DRAGON_REVERSE'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DRAGON_REVERSE' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-400 border-gray-200'}`}>走势龙反</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'BEAD_DRAGON_FOLLOW'})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>珠盘龙顺</button>
@@ -3573,6 +3601,25 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                       </div>
                    )}
 
+                   {/* v5.7: 跟/反N期前参数 */}
+                   {(draftConfig.autoTarget === 'MIRROR_N_AGO' || draftConfig.autoTarget === 'MIRROR_N_AGO_REVERSE') && (
+                      <div className="bg-violet-50/50 p-3 rounded-xl border border-violet-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-violet-600 uppercase block">
+                           {draftConfig.autoTarget === 'MIRROR_N_AGO' ? '跟N期前参数' : '反N期前参数'}
+                         </span>
+                         <div className="flex items-center justify-between">
+                           <label className="text-[9px] font-bold text-gray-400">参考期数 N</label>
+                           <input type="number" min="1"
+                             value={draftConfig.trendWindow ?? 6}
+                             onChange={e => setDraftConfig({...draftConfig, trendWindow: Math.max(1, parseInt(e.target.value) || 6)})}
+                             className="w-16 text-center bg-white rounded-lg text-xs font-black border border-violet-200 outline-none" />
+                         </div>
+                         <p className="text-[9px] text-violet-600 font-semibold">
+                           第P期下注时，{draftConfig.autoTarget === 'MIRROR_N_AGO' ? '跟随' : '反向'}第P-{draftConfig.trendWindow ?? 6}期的开奖结果；需等待N期数据后开始
+                         </p>
+                      </div>
+                   )}
+
                    {/* 模式参数 */}
                    {(draftConfig.autoTarget === 'FOLLOW_LAST' || draftConfig.autoTarget === 'REVERSE_LAST' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND' || draftConfig.autoTarget === 'FOLLOW_RECENT_TREND_REVERSE' || draftConfig.autoTarget.startsWith('GLOBAL') || draftConfig.autoTarget === 'DRAGON_FOLLOW' || draftConfig.autoTarget === 'DRAGON_REVERSE' || draftConfig.autoTarget === 'AI_PREDICTION' || draftConfig.autoTarget === 'GLOBAL_AI_FULL_SCAN' || draftConfig.autoTarget === 'BEAD_DRAGON_FOLLOW' || draftConfig.autoTarget === 'BEAD_DRAGON_REVERSE' || draftConfig.autoTarget === 'RULE_TREND_DRAGON' || draftConfig.autoTarget === 'RULE_BEAD_DRAGON') && (
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-2">
@@ -3795,6 +3842,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             case 'FOLLOW_RECENT_TREND_REVERSE': detail = `反势N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'FOLLOW_RECENT_TREND_EVO': detail = `近势进化N=${t.config.trendWindow || 5}[${tsStr}]`; break;
                             case 'FOLLOW_RECENT_TREND_EVO_REVERSE': detail = `反势进化N=${t.config.trendWindow || 5}[${tsStr}]`; break;
+                            case 'MIRROR_N_AGO': detail = `跟N期前N=${t.config.trendWindow || 6}[${tsStr}]`; break;
+                            case 'MIRROR_N_AGO_REVERSE': detail = `反N期前N=${t.config.trendWindow || 6}[${tsStr}]`; break;
                             case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
                             case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
                             case 'BEAD_DRAGON_FOLLOW': detail = `珠龙顺[${tsStr}]`; break;
@@ -3827,6 +3876,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                        'DUAL_MOMENTUM':'双重动量','REVERSE_DRAGON_MARTINGALE':'反龙马丁',
                        'FOLLOW_RECENT_TREND_EVO':'近势进化',
                        'FOLLOW_RECENT_TREND_EVO_REVERSE':'反势进化',
+                       'MIRROR_N_AGO':'跟N期前',
+                       'MIRROR_N_AGO_REVERSE':'反N期前',
                      };
                      const autoTargetShortLabel = atShort[task.config.autoTarget] || task.config.autoTarget;
 
@@ -3838,6 +3889,8 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          case 'FOLLOW_RECENT_TREND_REVERSE': return `起投${c.minStreak || 1}~最大${c.trendWindow || 5}连`;
                          case 'FOLLOW_RECENT_TREND_EVO': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 1}连`;
                          case 'FOLLOW_RECENT_TREND_EVO_REVERSE': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 1}连`;
+                         case 'MIRROR_N_AGO':
+                         case 'MIRROR_N_AGO_REVERSE': return `N=${c.trendWindow || 6}`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
                          case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;
