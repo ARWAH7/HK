@@ -211,6 +211,10 @@ interface AutoTask {
   recentPredictions?: { correct: boolean; timestamp: number }[]; // 近期预测结果
   // v5.1-fix: 影子预测 - 持续追踪模型预测准确率（无论是否投注）
   shadowPrediction?: { targetHeight: number; prediction: BetTarget; betType: BetType };
+  // DOUBLE_STREAK_TRIGGER 运行态（严格规则）
+  doubleWaiting?: boolean;                 // 已达到4次[大,大]后进入等待
+  doubleWaitingFromHeight?: number;        // 进入等待时的最新区块高度
+  doubleBaseEventCount?: number;           // 当前轮次起点事件计数
   // 链式切换配置
   chainEnabled?: boolean;              // 启用链式切换
   chainLossThreshold?: number;         // 连输N期触发切换到下一任务
@@ -1055,6 +1059,17 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       }
     }
     return hits;
+  }, []);
+
+  // 严格规则统计：仅统计大小流中的 [大,大] 事件，允许重叠
+  const countBigDoubleEvents = useCallback((blocks: BlockData[]) => {
+    if (blocks.length < 2) return 0;
+    const asc = [...blocks].sort((a, b) => a.height - b.height);
+    let count = 0;
+    for (let i = 1; i < asc.length; i++) {
+      if (asc[i - 1].sizeType === 'BIG' && asc[i].sizeType === 'BIG') count += 1;
+    }
+    return count;
   }, []);
 
 
@@ -2379,24 +2394,39 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
              }
            }
         } else if (task.config.autoTarget === 'DOUBLE_STREAK_TRIGGER') {
-           const triggerCount = Math.max(1, task.config.doubleTriggerCount || 3);
-           const streakLen = Math.max(2, task.config.doubleStreakLength || 2);
-           const selected = task.config.targetSelections || [];
+           // 严格按定义：
+           // 1) 只统计 [大,大] 事件（允许重叠）
+           // 2) 每累计到第4次进入等待
+           // 3) 等待后若出现新的“大”，则下一期下注买“大”
+           // 4) 统计逻辑和下注逻辑分离；同一轮只触发一次
+           const TRIGGER_EVENTS = 4;
+           const latestBlock = ruleBlocks[0];
+           if (latestBlock) {
+             const totalBigDoubleEvents = countBigDoubleEvents(ruleBlocks);
+             const base = task.doubleBaseEventCount ?? 0;
 
-           const preferredTargets = task.config.targetType === 'SIZE'
-             ? selected.filter(t => t === 'BIG' || t === 'SMALL')
-             : selected.filter(t => t === 'ODD' || t === 'EVEN');
-           const candidateTargets = (preferredTargets.length > 0 ? preferredTargets : selected).slice(0, 1);
-           const selectedTarget = (candidateTargets[0] || (task.config.targetType === 'SIZE' ? 'SMALL' : 'ODD')) as BetTarget;
+             // 统计阶段：达到4次阈值进入等待（仅进一次）
+             if (!task.doubleWaiting && (totalBigDoubleEvents - base) >= TRIGGER_EVENTS) {
+               task.doubleWaiting = true;
+               task.doubleWaitingFromHeight = latestBlock.height;
+               tasksChanged = true;
+             }
 
-           const hitCount = calculateTargetPairHits(ruleBlocks, selectedTarget, streakLen);
-           if (hitCount >= triggerCount) {
-             const isParityTarget = selectedTarget === 'ODD' || selectedTarget === 'EVEN';
-             type = isParityTarget ? 'PARITY' : 'SIZE';
-             const followTarget = selectedTarget;
-             const reverseTarget: BetTarget = selectedTarget === 'ODD' ? 'EVEN' : selectedTarget === 'EVEN' ? 'ODD' : selectedTarget === 'BIG' ? 'SMALL' : 'BIG';
-             target = (task.config.doubleTriggerDirection || 'FOLLOW') === 'FOLLOW' ? followTarget : reverseTarget;
-             if (ts.includes(target)) shouldBet = true;
+             // 下注阶段：等待后，只有出现“新的大”才下注买大
+             if (task.doubleWaiting) {
+               const seenNewResult = latestBlock.height > (task.doubleWaitingFromHeight || 0);
+               if (seenNewResult && latestBlock.sizeType === 'BIG') {
+                 type = 'SIZE';
+                 target = 'BIG';
+                 shouldBet = true;
+
+                 // 同一轮只触发一次：下注后立即结束等待并重置基线
+                 task.doubleWaiting = false;
+                 task.doubleWaitingFromHeight = undefined;
+                 task.doubleBaseEventCount = totalBigDoubleEvents;
+                 tasksChanged = true;
+               }
+             }
            }
         } else if (task.config.autoTarget === 'OSCILLATION_REVERSE') {
            // v5.2: 振荡反转 - 连续N次相同结果后反向下注
@@ -3410,7 +3440,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
 
                    {draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER' && (
                       <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100/50 space-y-2">
-                         <span className="text-[10px] font-black text-emerald-700 uppercase block">双连触发参数</span>
+                         <span className="text-[10px] font-black text-emerald-700 uppercase block">双连触发参数（兼容显示）</span>
                          <div className="grid grid-cols-3 gap-2">
                            <div>
                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">参数1(出现次数)</label>
@@ -3429,7 +3459,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                            </div>
                          </div>
                          <p className="text-[9px] text-emerald-700 font-semibold">
-                           当目标连续{draftConfig.doubleStreakLength || 2}次出现达到{draftConfig.doubleTriggerCount || 3}组时触发；正投=下注目标本身，反投=下注相反目标。
+                           严格策略定义：仅统计[大,大]事件（可重叠）；累计到第4次后进入等待，等待阶段出现新的“大”则下一期下注买大；出现“小”继续等待。
                          </p>
                       </div>
                    )}
