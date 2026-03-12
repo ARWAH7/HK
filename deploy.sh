@@ -7,6 +7,8 @@ set -e
 
 echo "🚀 开始部署哈希分析大师 5.0..."
 
+BACKEND_DIR="backend"
+
 # 颜色定义
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -26,7 +28,7 @@ echo -e "${BLUE}📥 安装前端依赖...${NC}"
 npm install
 
 echo -e "${BLUE}📥 安装后端依赖...${NC}"
-cd server
+cd "$BACKEND_DIR"
 npm install
 cd ..
 
@@ -38,11 +40,11 @@ if [ ! -f ".env.local" ]; then
     echo -e "${GREEN}✅ 请编辑 .env.local 填入您的 API Key${NC}"
 fi
 
-if [ ! -f "server/.env" ]; then
-    echo -e "${RED}⚠️  未找到 server/.env 文件${NC}"
+if [ ! -f "$BACKEND_DIR/.env" ]; then
+    echo -e "${RED}⚠️  未找到 $BACKEND_DIR/.env 文件${NC}"
     echo -e "${BLUE}📝 正在创建示例配置...${NC}"
-    cp server/.env.example server/.env
-    echo -e "${GREEN}✅ 请编辑 server/.env 填入您的 API Key${NC}"
+    cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
+    echo -e "${GREEN}✅ 请编辑 $BACKEND_DIR/.env 填入您的 API Key${NC}"
 fi
 
 # 3. 构建前端
@@ -58,16 +60,13 @@ fi
 
 # 4. 测试后端
 echo -e "${BLUE}🧪 测试后端服务...${NC}"
-cd server
-timeout 5 node index.js &
-SERVER_PID=$!
-sleep 3
+cd "$BACKEND_DIR"
+npm run build
 
-if ps -p $SERVER_PID > /dev/null; then
-    echo -e "${GREEN}✅ 后端服务启动成功${NC}"
-    kill $SERVER_PID
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ 后端构建成功${NC}"
 else
-    echo -e "${RED}❌ 后端服务启动失败${NC}"
+    echo -e "${RED}❌ 后端构建失败${NC}"
     exit 1
 fi
 cd ..
@@ -86,13 +85,14 @@ case $choice in
         ;;
     2)
         echo -e "${GREEN}🚀 启动生产模式...${NC}"
-        cd server
-        NODE_ENV=production node index.js
+        cd "$BACKEND_DIR"
+        npm run build
+        NODE_ENV=production npm start
         ;;
     3)
         echo -e "${GREEN}✅ 构建完成！${NC}"
         echo -e "${BLUE}📂 前端文件位于: ./dist${NC}"
-        echo -e "${BLUE}📂 后端文件位于: ./server${NC}"
+        echo -e "${BLUE}📂 后端文件位于: ./$BACKEND_DIR${NC}"
         ;;
     *)
         echo -e "${RED}❌ 无效选择${NC}"

@@ -33,7 +33,7 @@ function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-type TabType = 'dashboard' | 'parity-trend' | 'size-trend' | 'parity-bead' | 'size-bead' | 'dragon-list' | 'ai-prediction' | 'simulated-betting';
+type TabType = 'dashboard' | 'trend' | 'bead' | 'dragon-list' | 'ai-prediction' | 'simulated-betting';
 
 interface ThemeColors {
   odd: string;
@@ -1156,23 +1156,17 @@ const App: React.FC = () => {
       }
     }
     setActiveRuleId(ruleId);
-    if (mode === 'bead') {
-      setActiveTab(type === 'parity' ? 'parity-bead' : 'size-bead');
-    } else {
-      setActiveTab(type === 'parity' ? 'parity-trend' : 'size-trend');
-    }
+    setActiveTab(mode === 'bead' ? 'bead' : 'trend');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [rules]);
 
   const TABS = [
-    { id: 'dashboard', label: '综合盘面', icon: LayoutDashboard, color: 'text-blue-500' },
-    { id: 'parity-trend', label: '单双走势', icon: BarChart3, color: 'text-red-500' },
-    { id: 'size-trend', label: '大小走势', icon: PieChart, color: 'text-indigo-500' },
-    { id: 'parity-bead', label: '单双珠盘', icon: Grid3X3, color: 'text-teal-500' },
-    { id: 'size-bead', label: '大小珠盘', icon: Grid3X3, color: 'text-orange-500' },
-    { id: 'dragon-list', label: '长龙提醒', icon: Flame, color: 'text-amber-500' },
-    { id: 'ai-prediction', label: 'AI 数据预测', icon: BrainCircuit, color: 'text-purple-600' },
-    { id: 'simulated-betting', label: '模拟下注', icon: Gamepad2, color: 'text-pink-500' },
+    { id: 'dashboard', label: '综合', icon: LayoutDashboard, color: 'text-blue-500' },
+    { id: 'trend', label: '走势', icon: BarChart3, color: 'text-red-500' },
+    { id: 'bead', label: '珠盘', icon: Grid3X3, color: 'text-teal-500' },
+    { id: 'dragon-list', label: '长龙', icon: Flame, color: 'text-amber-500' },
+    { id: 'ai-prediction', label: '预测', icon: BrainCircuit, color: 'text-purple-600' },
+    { id: 'simulated-betting', label: '模拟', icon: Gamepad2, color: 'text-pink-500' },
   ] as const;
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
@@ -1350,22 +1344,34 @@ const App: React.FC = () => {
              <AIPrediction allBlocks={allBlocks} rules={rules} />
         </div>
 
-        {/* Generic Charts for Sub-tabs */}
-        {['parity-trend', 'size-trend', 'parity-bead', 'size-bead'].includes(activeTab) && (
+        {/* Trend Combined View */}
+        {activeTab === 'trend' && (
           <div className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-xl border border-gray-100 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500 h-auto">
             <div className="flex items-center space-x-3 mb-8 px-2">
                <div className="p-2 bg-blue-50 rounded-xl">
-                 {activeTab.includes('parity') ? <BarChart3 className="w-6 h-6 text-red-500" /> : <PieChart className="w-6 h-6 text-indigo-500" />}
+                 <BarChart3 className="w-6 h-6 text-red-500" />
                </div>
-               <h2 className="text-xl md:text-2xl font-black text-gray-800">
-                {TABS.find(t => t.id === activeTab)?.label} 深度分析
-              </h2>
+               <h2 className="text-xl md:text-2xl font-black text-gray-800">走势深度分析</h2>
             </div>
-            <div className="h-fit">
-              {activeTab === 'parity-trend' && <TrendChart key={`parity-trend-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="parity" title="单双走势" rows={activeRule?.trendRows || 6} />}
-              {activeTab === 'size-trend' && <TrendChart key={`size-trend-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="size" title="大小走势" rows={activeRule?.trendRows || 6} />}
-              {activeTab === 'parity-bead' && <BeadRoad key={`parity-bead-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="parity" rule={activeRule} title="单双珠盘" rows={activeRule?.beadRows || 6} />}
-              {activeTab === 'size-bead' && <BeadRoad key={`size-bead-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="size" rule={activeRule} title="大小珠盘" rows={activeRule?.beadRows || 6} />}
+            <div className="grid grid-cols-1 gap-8">
+              <TrendChart key={`parity-trend-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="parity" title="单双走势" rows={activeRule?.trendRows || 6} />
+              <TrendChart key={`size-trend-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="size" title="大小走势" rows={activeRule?.trendRows || 6} />
+            </div>
+          </div>
+        )}
+
+        {/* Bead Combined View */}
+        {activeTab === 'bead' && (
+          <div className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-xl border border-gray-100 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500 h-auto">
+            <div className="flex items-center space-x-3 mb-8 px-2">
+               <div className="p-2 bg-blue-50 rounded-xl">
+                 <Grid3X3 className="w-6 h-6 text-teal-500" />
+               </div>
+               <h2 className="text-xl md:text-2xl font-black text-gray-800">珠盘深度分析</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-8">
+              <BeadRoad key={`parity-bead-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="parity" rule={activeRule} title="单双珠盘" rows={activeRule?.beadRows || 6} />
+              <BeadRoad key={`size-bead-full-${activeRuleId}`} blocks={ruleFilteredBlocks} mode="size" rule={activeRule} title="大小珠盘" rows={activeRule?.beadRows || 6} />
             </div>
           </div>
         )}

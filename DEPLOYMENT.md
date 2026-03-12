@@ -13,15 +13,15 @@
 
 ### Windows 用户
 
-#### 方式 1: 一键启动（推荐）
+#### 推荐方式
 ```cmd
-start.bat
+npm run start:full
 ```
 
-#### 方式 2: 手动启动
+#### 手动启动
 ```cmd
 # 终端 1: 启动后端
-cd server
+cd backend
 npm run dev
 
 # 终端 2: 启动前端
@@ -30,25 +30,25 @@ npm run dev
 
 ### Linux/Mac 用户
 
-#### 方式 1: 一键启动（推荐）
+#### 推荐方式
 ```bash
-chmod +x start.sh
-./start.sh
+npm run start:full
 ```
 
-#### 方式 2: 手动启动
+#### 手动启动
 ```bash
 # 终端 1: 启动后端
-cd server && npm run dev
+cd backend && npm run dev
 
 # 终端 2: 启动前端
 npm run dev
 ```
 
 ### 访问地址
-- 前端: http://localhost:3000
-- 后端: http://localhost:5000
-- API 文档: http://localhost:5000/api/status
+- 前端: http://localhost:5173
+- 后端 API: http://localhost:3001
+- 健康检查: http://localhost:3001/health
+- WebSocket: ws://localhost:8080
 
 ---
 
@@ -63,15 +63,16 @@ npm run build
 
 #### 2. 配置环境变量
 ```bash
-# server/.env
+# backend/.env
 NODE_ENV=production
-PORT=5000
-TRON_API_KEY=your_production_key
+API_PORT=3001
+WS_PORT=8080
+ALCHEMY_API_KEY=your_production_key
 ```
 
 #### 3. 启动后端（会自动服务前端）
 ```bash
-cd server
+cd backend
 npm start
 ```
 
@@ -81,8 +82,8 @@ npm start
 npm install -g pm2
 
 # 启动应用
-cd server
-pm2 start index.js --name hash-master
+cd backend
+pm2 start dist/index.js --name hash-master
 
 # 查看状态
 pm2 status
@@ -136,7 +137,7 @@ sudo certbot --nginx -d yourdomain.com
 #### 1. 配置环境变量
 ```bash
 # 创建 .env 文件
-echo "TRON_API_KEY=your_key_here" > .env
+echo "ALCHEMY_API_KEY=your_key_here" > backend/.env
 ```
 
 #### 2. 启动容器
@@ -164,9 +165,9 @@ docker run -p 80:80 hash-master-frontend
 
 #### 仅构建后端
 ```bash
-cd server
+cd backend
 docker build -t hash-master-backend .
-docker run -p 5000:5000 -e TRON_API_KEY=your_key hash-master-backend
+docker run -p 3001:3001 -p 8080:8080 -e ALCHEMY_API_KEY=your_key hash-master-backend
 ```
 
 ---
@@ -198,13 +199,13 @@ heroku create hash-master-backend
 
 #### 2. 配置环境变量
 ```bash
-heroku config:set TRON_API_KEY=your_key
+heroku config:set ALCHEMY_API_KEY=your_key
 heroku config:set NODE_ENV=production
 ```
 
 #### 3. 部署
 ```bash
-git subtree push --prefix server heroku main
+git subtree push --prefix backend heroku main
 ```
 
 ### Railway（全栈）
@@ -223,7 +224,7 @@ git subtree push --prefix server heroku main
 #### 1. 启动实例
 - 选择 Ubuntu 22.04 LTS
 - 实例类型: t2.micro（免费套餐）
-- 安全组: 开放 80, 443, 5000 端口
+- 安全组: 开放 80, 443, 3001, 8080 端口
 
 #### 2. 连接并安装依赖
 ```bash
@@ -254,12 +255,12 @@ npm run build
 
 # 配置环境变量
 cp .env.example .env.local
-cp server/.env.example server/.env
+cp backend/.env.example backend/.env
 # 编辑配置文件...
 
 # 启动后端
-cd server
-pm2 start index.js --name hash-master
+cd backend
+pm2 start dist/index.js --name hash-master
 pm2 save
 pm2 startup
 
@@ -275,11 +276,11 @@ sudo systemctl restart nginx
 ### 问题 1: 端口被占用
 ```bash
 # Windows
-netstat -ano | findstr :3000
+netstat -ano | findstr :5173
 taskkill /PID <PID> /F
 
 # Linux/Mac
-lsof -ti:3000 | xargs kill -9
+lsof -ti:5173 | xargs kill -9
 ```
 
 ### 问题 2: 依赖安装失败
@@ -291,7 +292,7 @@ npm install
 ```
 
 ### 问题 3: API 请求失败
-- 检查后端是否启动: `curl http://localhost:5000/health`
+- 检查后端是否启动: `curl http://localhost:3001/health`
 - 检查 API Key 是否配置
 - 查看浏览器控制台错误
 - 检查 CORS 配置
@@ -330,7 +331,7 @@ docker-compose up -d
 
 ### 示例: PM2 集群模式
 ```bash
-pm2 start index.js -i max --name hash-master-cluster
+pm2 start dist/index.js -i max --name hash-master-cluster
 ```
 
 ---
@@ -359,7 +360,7 @@ pm2 start index.js -i max --name hash-master-cluster
 
 ## 📞 获取帮助
 
-- 📖 查看 [README-FULLSTACK.md](./README-FULLSTACK.md)
+- 📖 查看 [backend/README.md](./backend/README.md)
 - 🐛 提交 Issue
 - 💬 加入社区讨论
 

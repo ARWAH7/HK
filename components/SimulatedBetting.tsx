@@ -68,6 +68,7 @@ type AutoTargetMode = 'FIXED' | 'RANDOM' | 'FOLLOW_LAST' | 'REVERSE_LAST' | 'GLO
   | 'FOLLOW_RECENT_TREND_EVO_REVERSE' // 近期反势进化版：同EVO但方向取反
   | 'MIRROR_N_AGO'                    // 跟N期前：复制N期前结果
   | 'MIRROR_N_AGO_REVERSE'            // 反N期前：反向N期前结果
+  | 'DOUBLE_STREAK_TRIGGER'           // 双连触发：目标出现N次M连后下注
   // Legacy modes (backward compatibility - auto-migrated on load)
   | 'FIXED_ODD' | 'FIXED_EVEN' | 'FIXED_BIG' | 'FIXED_SMALL' | 'RANDOM_PARITY' | 'RANDOM_SIZE';
 
@@ -169,6 +170,9 @@ interface StrategyConfig {
   // v5.6: 近期顺势进化版参数
   evoBeadRows?: number;         // 珠盘列内最多跟注行数 (默认5，赢后停止本列)
   evoMinLossStreak?: number;    // 策略激活所需最小连输数 (默认6)
+  doubleTriggerCount?: number;  // 参数1: 目标出现N次M连中的N (默认3)
+  doubleStreakLength?: number;  // 参数2: M连长度 (默认2)
+  doubleTriggerDirection?: 'FOLLOW' | 'REVERSE'; // 正投/反投
 }
 
 interface StrategyState {
@@ -730,7 +734,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
       customSequence: [1, 2, 4, 8, 17], // Default custom sequence
       kellyFraction: 0.2, // Default 20%
       trendWindow: 5,
-      dragonEndStreak: 5
+      dragonEndStreak: 5,
+      doubleTriggerCount: 3,
+      doubleStreakLength: 2,
+      doubleTriggerDirection: 'FOLLOW'
   });
   const [customSeqText, setCustomSeqText] = useState('1, 2, 4, 8, 17');
   // 自定义倍投序列 保存/加载/删除
@@ -1018,6 +1025,33 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     }
     return { val: firstVal, count };
   }, []);
+  const calculateTargetPairHits = useCallback((blocks: BlockData[], target: BetTarget, pairLen: number) => {
+    if (pairLen < 2 || blocks.length < pairLen) return 0;
+    const isHitAt = (idx: number) => {
+      for (let j = 0; j < pairLen; j++) {
+        const b = blocks[idx + j];
+        if (!b) return false;
+        if (target === 'ODD' && b.type !== 'ODD') return false;
+        if (target === 'EVEN' && b.type !== 'EVEN') return false;
+        if (target === 'BIG' && b.sizeType !== 'BIG') return false;
+        if (target === 'SMALL' && b.sizeType !== 'SMALL') return false;
+      }
+      return true;
+    };
+
+    let hits = 0;
+    let i = 0;
+    while (i <= blocks.length - pairLen) {
+      if (isHitAt(i)) {
+        hits++;
+        i += pairLen;
+      } else {
+        i += 1;
+      }
+    }
+    return hits;
+  }, []);
+
 
   // Helper to generate task badge
   const getTaskBadgeContent = (task: AutoTask, rule?: IntervalRule) => {
@@ -1038,6 +1072,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
     if (task.config.autoTarget === 'ALTERNATING_FOLLOW') return { text: `交替跳选(${task.config.altPatternLength || 6}期${task.config.altReverseMode ? '反' : '顺'})`, color: 'bg-lime-100 text-lime-700' };
     if (task.config.autoTarget === 'DUAL_MOMENTUM') return { text: `双重动量(N=${task.config.dualMomentumWindow || 15})`, color: 'bg-teal-100 text-teal-700' };
     if (task.config.autoTarget === 'REVERSE_DRAGON_MARTINGALE') return { text: `反龙马丁(≥${task.config.rDragonMinStreak || 5}连)`, color: 'bg-rose-100 text-rose-700' };
+    if (task.config.autoTarget === 'DOUBLE_STREAK_TRIGGER') return { text: `双连触发(${task.config.doubleTriggerCount || 3}次${task.config.doubleStreakLength || 2}连)`, color: 'bg-emerald-100 text-emerald-700' };
 
     const ruleLabel = rule?.label || '未知规则';
     const targetLabels: Record<string, string> = { ODD: '单', EVEN: '双', BIG: '大', SMALL: '小' };
@@ -1064,6 +1099,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
         case 'MIRROR_N_AGO_REVERSE': detail = `反N期前N=${task.config.trendWindow || 6}[${tsStr}]`; break;
         case 'DRAGON_FOLLOW': detail = `龙顺势[${tsStr}]`; break;
         case 'DRAGON_REVERSE': detail = `龙反势[${tsStr}]`; break;
+        case 'DOUBLE_STREAK_TRIGGER': detail = `双连触发[${tsStr}]`; break;
         default: detail = '自定义';
     }
 
@@ -2337,6 +2373,19 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                }
              }
            }
+        } else if (task.config.autoTarget === 'DOUBLE_STREAK_TRIGGER') {
+           const selectedTarget = (task.config.targetSelections && task.config.targetSelections[0]) || 'SMALL';
+           const triggerCount = Math.max(1, task.config.doubleTriggerCount || 3);
+           const streakLen = Math.max(2, task.config.doubleStreakLength || 2);
+           const hitCount = calculateTargetPairHits(ruleBlocks, selectedTarget, streakLen);
+           if (hitCount >= triggerCount) {
+             const isParityTarget = selectedTarget === 'ODD' || selectedTarget === 'EVEN';
+             type = isParityTarget ? 'PARITY' : 'SIZE';
+             const followTarget = selectedTarget;
+             const reverseTarget: BetTarget = selectedTarget === 'ODD' ? 'EVEN' : selectedTarget === 'EVEN' ? 'ODD' : selectedTarget === 'BIG' ? 'SMALL' : 'BIG';
+             target = (task.config.doubleTriggerDirection || 'FOLLOW') === 'FOLLOW' ? followTarget : reverseTarget;
+             if (ts.includes(target)) shouldBet = true;
+           }
         } else if (task.config.autoTarget === 'OSCILLATION_REVERSE') {
            // v5.2: 振荡反转 - 连续N次相同结果后反向下注
            if (ruleBlocks.length > 0) {
@@ -3249,6 +3298,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DUAL_MOMENTUM', dualMomentumWindow: draftConfig.dualMomentumWindow || 15, dualMomentumThreshold: draftConfig.dualMomentumThreshold || 60})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DUAL_MOMENTUM' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>双重动量</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_DRAGON_MARTINGALE', rDragonMinStreak: draftConfig.rDragonMinStreak || 5})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-gray-400 border-gray-200'}`}>反龙马丁</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DOUBLE_STREAK_TRIGGER', doubleTriggerCount: draftConfig.doubleTriggerCount || 3, doubleStreakLength: draftConfig.doubleStreakLength || 2, doubleTriggerDirection: draftConfig.doubleTriggerDirection || 'FOLLOW', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['SMALL']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>双连触发</button>
                       </div>
                    </div>
 
@@ -3336,6 +3386,32 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          </div>
                          <p className="text-[9px] text-cyan-600 font-semibold">
                            近{draftConfig.winRateWindow || 30}期模型胜率≤{draftConfig.winRateTrigger || 30}%时开始投注，胜率≥{draftConfig.winRateStop || 60}%时停止
+                         </p>
+                      </div>
+                   )}
+
+                   {draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER' && (
+                      <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100/50 space-y-2">
+                         <span className="text-[10px] font-black text-emerald-700 uppercase block">双连触发参数</span>
+                         <div className="grid grid-cols-3 gap-2">
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">参数1(出现次数)</label>
+                             <input type="number" min="1" step="1" value={draftConfig.doubleTriggerCount || 3} onChange={e => setDraftConfig({...draftConfig, doubleTriggerCount: Math.max(1, parseInt(e.target.value) || 1)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-emerald-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">参数2(连数)</label>
+                             <input type="number" min="2" step="1" value={draftConfig.doubleStreakLength || 2} onChange={e => setDraftConfig({...draftConfig, doubleStreakLength: Math.max(2, parseInt(e.target.value) || 2)})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-emerald-200 outline-none text-center" />
+                           </div>
+                           <div>
+                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">方向</label>
+                             <select value={draftConfig.doubleTriggerDirection || 'FOLLOW'} onChange={e => setDraftConfig({...draftConfig, doubleTriggerDirection: e.target.value as 'FOLLOW' | 'REVERSE'})} className="w-full bg-white rounded-lg px-1.5 py-1.5 text-xs font-black border border-emerald-200 outline-none text-center">
+                               <option value="FOLLOW">正投</option>
+                               <option value="REVERSE">反投</option>
+                             </select>
+                           </div>
+                         </div>
+                         <p className="text-[9px] text-emerald-700 font-semibold">
+                           当目标连续{draftConfig.doubleStreakLength || 2}次出现达到{draftConfig.doubleTriggerCount || 3}组时触发；正投=下注目标本身，反投=下注相反目标。
                          </p>
                       </div>
                    )}
@@ -3900,6 +3976,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          case 'FOLLOW_RECENT_TREND_EVO_REVERSE': return `N=${c.trendWindow || 5} 起投${c.minStreak || 1}连 珠${c.evoBeadRows ?? 5}行 激活${c.evoMinLossStreak ?? 1}连`;
                          case 'MIRROR_N_AGO':
                          case 'MIRROR_N_AGO_REVERSE': return `N=${c.trendWindow || 6}`;
+                         case 'DOUBLE_STREAK_TRIGGER': return `${c.doubleTriggerCount || 3}次${c.doubleStreakLength || 2}连(${(c.doubleTriggerDirection || 'FOLLOW') === 'FOLLOW' ? '正投' : '反投'})`;
                          case 'OSCILLATION_REVERSE': return `连续${c.oscillationCount || 3}次触发`;
                          case 'PATTERN_MATCH': return `模式长度=${c.patternLength || 4} 最少匹配${c.patternMinMatch || 3}`;
                          case 'STREAK_BREAK_REVERSE': return `连${c.streakBreakCount || 4}后等反转`;

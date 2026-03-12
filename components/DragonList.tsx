@@ -33,6 +33,16 @@ const RAW_TYPE_COLOR: Record<string, string> = { ODD: 'text-red-600', EVEN: 'tex
 const RAW_TYPE_BG: Record<string, string> = { ODD: 'bg-red-50', EVEN: 'bg-blue-50', BIG: 'bg-amber-50', SMALL: 'bg-emerald-50' };
 const RAW_TYPES = ['ODD', 'EVEN', 'BIG', 'SMALL'] as const;
 
+
+interface SingleJumpInfo {
+  ruleId: string;
+  ruleName: string;
+  mode: 'trend' | 'bead';
+  type: 'parity' | 'size';
+  count: number;
+  sequenceLabel: string;
+}
+
 const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followedPatterns, onToggleFollow, onJumpToChart }) => {
   const [activeFilter, setActiveFilter] = useState<DragonFilter>('ALL');
   const [isTracking, setIsTracking] = useState(false);
@@ -75,11 +85,12 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
   }, []);
 
   // ═══════ 1. Compute ALL dragons (unfiltered) — used for tracking ═══════
-  const { allTrendDragons, allBeadRowDragons } = useMemo(() => {
+  const { allTrendDragons, allBeadRowDragons, allSingleJumpSignals } = useMemo(() => {
     const trendResults: DragonInfo[] = [];
     const beadResults: DragonInfo[] = [];
+    const singleJumpResults: SingleJumpInfo[] = [];
 
-    if (allBlocks.length === 0) return { allTrendDragons: [], allBeadRowDragons: [] };
+    if (allBlocks.length === 0) return { allTrendDragons: [], allBeadRowDragons: [], allSingleJumpSignals: [] };
 
     rules.forEach(rule => {
       const epoch = rule.startBlock || 0;
@@ -130,6 +141,25 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
       addTrendDragon('parity', calculateStreak('type'));
       addTrendDragon('size', calculateStreak('sizeType'));
 
+      const calculateSingleJump = (items: BlockData[], key: 'type' | 'sizeType') => {
+        if (items.length < 2) return 0;
+        let count = 1;
+        for (let i = 1; i < items.length; i++) {
+          if (items[i][key] !== items[i - 1][key]) count++;
+          else break;
+        }
+        return count;
+      };
+
+      const parityJump = calculateSingleJump(filtered, 'type');
+      const sizeJump = calculateSingleJump(filtered, 'sizeType');
+      if (parityJump >= threshold) {
+        singleJumpResults.push({ ruleId: rule.id, ruleName: rule.label, mode: 'trend', type: 'parity', count: parityJump, sequenceLabel: '单双单跳' });
+      }
+      if (sizeJump >= threshold) {
+        singleJumpResults.push({ ruleId: rule.id, ruleName: rule.label, mode: 'trend', type: 'size', count: sizeJump, sequenceLabel: '大小单跳' });
+      }
+
       // Bead Row Dragons
       for (let r = 0; r < rows; r++) {
         const rowItems = filtered.filter(b => {
@@ -172,17 +202,43 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
 
         addBeadDragon('parity', rpStreak);
         addBeadDragon('size', rsStreak);
+
+        const rowParityJump = (() => {
+          if (rowItems.length < 2) return 0;
+          let c = 1;
+          for (let i = 1; i < rowItems.length; i++) {
+            if (rowItems[i].type !== rowItems[i - 1].type) c++;
+            else break;
+          }
+          return c;
+        })();
+        const rowSizeJump = (() => {
+          if (rowItems.length < 2) return 0;
+          let c = 1;
+          for (let i = 1; i < rowItems.length; i++) {
+            if (rowItems[i].sizeType !== rowItems[i - 1].sizeType) c++;
+            else break;
+          }
+          return c;
+        })();
+        if (rowParityJump >= threshold) {
+          singleJumpResults.push({ ruleId: rule.id, ruleName: rule.label, mode: 'bead', type: 'parity', count: rowParityJump, sequenceLabel: `珠盘单双单跳(第${r + 1}行)` });
+        }
+        if (rowSizeJump >= threshold) {
+          singleJumpResults.push({ ruleId: rule.id, ruleName: rule.label, mode: 'bead', type: 'size', count: rowSizeJump, sequenceLabel: `珠盘大小单跳(第${r + 1}行)` });
+        }
       }
     });
 
     return {
       allTrendDragons: trendResults.sort((a, b) => b.count - a.count),
-      allBeadRowDragons: beadResults.sort((a, b) => b.count - a.count)
+      allBeadRowDragons: beadResults.sort((a, b) => b.count - a.count),
+      allSingleJumpSignals: singleJumpResults.sort((a, b) => b.count - a.count)
     };
   }, [allBlocks, rules]);
 
   // ═══════ 2. Filtered dragons for display ═══════
-  const { trendDragons, beadRowDragons, followedResults } = useMemo(() => {
+  const { trendDragons, beadRowDragons, followedResults, singleJumpSignals } = useMemo(() => {
     const filterFn = (d: DragonInfo) => {
       if (activeFilter !== 'ALL' && d.rawType !== activeFilter) return false;
       if (dragonRuleFilter !== 'ALL' && d.ruleId !== dragonRuleFilter) return false;
@@ -200,9 +256,10 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
     return {
       trendDragons: allTrendDragons.filter(filterFn),
       beadRowDragons: allBeadRowDragons.filter(filterFn),
-      followedResults: watchResults.sort((a, b) => b.count - a.count)
+      followedResults: watchResults.sort((a, b) => b.count - a.count),
+      singleJumpSignals: allSingleJumpSignals.filter(s => dragonRuleFilter === 'ALL' || s.ruleId === dragonRuleFilter)
     };
-  }, [allTrendDragons, allBeadRowDragons, followedPatterns, activeFilter, dragonRuleFilter]);
+  }, [allTrendDragons, allBeadRowDragons, allSingleJumpSignals, followedPatterns, activeFilter, dragonRuleFilter]);
 
   // ═══════ 3. Dragon tracking — uses UNFILTERED data ═══════
   // 核心改进：区分"新出现的龙"和"持续存在的龙"
@@ -754,6 +811,27 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
           </>
         )}
       </section>
+
+
+      {singleJumpSignals.length > 0 && (
+        <section className="bg-amber-50/60 rounded-[2rem] p-5 border border-amber-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4 text-amber-600" />
+            <h3 className="text-sm font-black text-amber-700">单跳提醒（走势 + 珠盘）</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {singleJumpSignals.slice(0, 8).map((s, idx) => (
+              <div key={`${s.ruleId}-${s.mode}-${s.type}-${idx}`} className="bg-white rounded-xl px-3 py-2 border border-amber-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xs font-black text-gray-800">{s.ruleName} · {s.sequenceLabel}</p>
+                  <p className="text-[10px] text-gray-500 font-bold">{s.mode === 'trend' ? '走势' : '珠盘'} 连续交替</p>
+                </div>
+                <span className="text-lg font-black text-amber-600">{s.count}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ═══════ Dragon List Filter Bar ═══════ */}
       <div className="flex flex-col md:flex-row items-center justify-between bg-white/60 backdrop-blur-md rounded-[2rem] p-4 px-8 border border-white shadow-sm gap-4">
