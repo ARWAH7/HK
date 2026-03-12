@@ -814,21 +814,52 @@ const DragonList: React.FC<DragonListProps> = memo(({ allBlocks, rules, followed
 
 
       {singleJumpSignals.length > 0 && (
-        <section className="bg-amber-50/60 rounded-[2rem] p-5 border border-amber-200 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Activity className="w-4 h-4 text-amber-600" />
-            <h3 className="text-sm font-black text-amber-700">单跳提醒（走势 + 珠盘）</h3>
+        <section className="bg-white rounded-[2.5rem] p-8 shadow-xl border border-gray-100">
+          <div className="flex items-center space-x-3 mb-8 px-1">
+            <div className="p-2.5 bg-amber-50 rounded-2xl">
+              <Activity className="w-6 h-6 text-amber-500" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-gray-900">3. 单跳提醒（走势 + 珠盘）</h2>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                检测单双/大小交替序列，例如：单双单双 或 大小大小
+              </p>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {singleJumpSignals.slice(0, 8).map((s, idx) => (
-              <div key={`${s.ruleId}-${s.mode}-${s.type}-${idx}`} className="bg-white rounded-xl px-3 py-2 border border-amber-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xs font-black text-gray-800">{s.ruleName} · {s.sequenceLabel}</p>
-                  <p className="text-[10px] text-gray-500 font-bold">{s.mode === 'trend' ? '走势' : '珠盘'} 连续交替</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {singleJumpSignals.slice(0, 8).map((s, idx) => {
+              const isParity = s.type === 'parity';
+              return (
+                <div
+                  key={`${s.ruleId}-${s.mode}-${s.type}-${idx}`}
+                  className="bg-white rounded-3xl p-4 border-2 border-amber-200 shadow-sm hover:shadow-md transition-all"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-gray-100 text-gray-500">
+                      {s.ruleName}
+                    </span>
+                    <span className="text-[10px] font-black text-gray-400">{s.mode === 'trend' ? '走势' : '珠盘'}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-white text-lg font-black ${isParity ? 'bg-red-500' : 'bg-orange-500'}`}>
+                        {isParity ? '单' : '大'}
+                      </span>
+                      <div>
+                        <p className="text-[11px] text-gray-400 font-black">{s.sequenceLabel}</p>
+                        <p className="text-2xl font-black text-gray-800">交替</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-gray-400 font-bold">连出</p>
+                      <p className="text-4xl leading-none font-black text-amber-500">{s.count}</p>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-lg font-black text-amber-600">{s.count}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

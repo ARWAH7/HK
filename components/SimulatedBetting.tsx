@@ -921,6 +921,11 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
               else if (autoTarget === 'RANDOM_SIZE') { autoTarget = 'RANDOM'; targetSelections = ['BIG', 'SMALL']; }
               else { targetSelections = ['ODD', 'EVEN', 'BIG', 'SMALL']; } // Default: all targets
             }
+            if (autoTarget === 'DOUBLE_STREAK_TRIGGER') {
+              const first = targetSelections?.[0];
+              const fallback = t.config.targetType === 'SIZE' ? 'SMALL' : 'ODD';
+              targetSelections = [first || fallback];
+            }
             return {
               ...t,
               betMode: t.betMode || 'SIMULATED',
@@ -2374,9 +2379,16 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
              }
            }
         } else if (task.config.autoTarget === 'DOUBLE_STREAK_TRIGGER') {
-           const selectedTarget = (task.config.targetSelections && task.config.targetSelections[0]) || 'SMALL';
            const triggerCount = Math.max(1, task.config.doubleTriggerCount || 3);
            const streakLen = Math.max(2, task.config.doubleStreakLength || 2);
+           const selected = task.config.targetSelections || [];
+
+           const preferredTargets = task.config.targetType === 'SIZE'
+             ? selected.filter(t => t === 'BIG' || t === 'SMALL')
+             : selected.filter(t => t === 'ODD' || t === 'EVEN');
+           const candidateTargets = (preferredTargets.length > 0 ? preferredTargets : selected).slice(0, 1);
+           const selectedTarget = (candidateTargets[0] || (task.config.targetType === 'SIZE' ? 'SMALL' : 'ODD')) as BetTarget;
+
            const hitCount = calculateTargetPairHits(ruleBlocks, selectedTarget, streakLen);
            if (hitCount >= triggerCount) {
              const isParityTarget = selectedTarget === 'ODD' || selectedTarget === 'EVEN';
@@ -3298,7 +3310,7 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'ALTERNATING_FOLLOW', altPatternLength: draftConfig.altPatternLength || 6})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'ALTERNATING_FOLLOW' ? 'bg-lime-600 text-white border-lime-600' : 'bg-white text-gray-400 border-gray-200'}`}>交替跳选</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DUAL_MOMENTUM', dualMomentumWindow: draftConfig.dualMomentumWindow || 15, dualMomentumThreshold: draftConfig.dualMomentumThreshold || 60})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DUAL_MOMENTUM' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-400 border-gray-200'}`}>双重动量</button>
                          <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'REVERSE_DRAGON_MARTINGALE', rDragonMinStreak: draftConfig.rDragonMinStreak || 5})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'REVERSE_DRAGON_MARTINGALE' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-gray-400 border-gray-200'}`}>反龙马丁</button>
-                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DOUBLE_STREAK_TRIGGER', doubleTriggerCount: draftConfig.doubleTriggerCount || 3, doubleStreakLength: draftConfig.doubleStreakLength || 2, doubleTriggerDirection: draftConfig.doubleTriggerDirection || 'FOLLOW', targetSelections: draftConfig.targetSelections?.length ? draftConfig.targetSelections : ['SMALL']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>双连触发</button>
+                         <button onClick={() => setDraftConfig({...draftConfig, autoTarget: 'DOUBLE_STREAK_TRIGGER', targetType: 'SIZE', doubleTriggerCount: draftConfig.doubleTriggerCount || 3, doubleStreakLength: draftConfig.doubleStreakLength || 2, doubleTriggerDirection: draftConfig.doubleTriggerDirection || 'FOLLOW', targetSelections: ['SMALL']})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-400 border-gray-200'}`}>双连触发</button>
                       </div>
                    </div>
 
@@ -3314,6 +3326,10 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                             <button
                               key={t}
                               onClick={() => {
+                                if (draftConfig.autoTarget === 'DOUBLE_STREAK_TRIGGER') {
+                                  setDraftConfig({ ...draftConfig, targetSelections: [t], targetType: (t === 'ODD' || t === 'EVEN') ? 'PARITY' : 'SIZE' });
+                                  return;
+                                }
                                 const curr = draftConfig.targetSelections || [];
                                 const next = selected ? curr.filter(x => x !== t) : [...curr, t];
                                 if (next.length === 0) return; // Must have at least 1
@@ -3326,12 +3342,14 @@ const SimulatedBetting: React.FC<SimulatedBettingProps> = ({ allBlocks, rules })
                           );
                         })}
                       </div>
-                      <button
-                        onClick={() => setDraftConfig({...draftConfig, targetSelections: ['ODD', 'EVEN', 'BIG', 'SMALL']})}
-                        className={`w-full py-1 rounded-lg text-[9px] font-bold border ${(draftConfig.targetSelections || []).length === 4 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-400 border-gray-200'}`}
-                      >
-                        全部
-                      </button>
+                      {draftConfig.autoTarget !== 'DOUBLE_STREAK_TRIGGER' && (
+                        <button
+                          onClick={() => setDraftConfig({...draftConfig, targetSelections: ['ODD', 'EVEN', 'BIG', 'SMALL']})}
+                          className={`w-full py-1 rounded-lg text-[9px] font-bold border ${(draftConfig.targetSelections || []).length === 4 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-400 border-gray-200'}`}
+                        >
+                          全部
+                        </button>
+                      )}
                    </div>
 
                    {/* v5.1: AI模型选择面板 */}
